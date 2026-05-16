@@ -1,0 +1,352 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  clerkId       String   @unique
+  email         String   @unique
+  name          String?
+  imageUrl      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  creator       Creator?
+  subscriptions Subscription[]
+  purchases     Purchase[]
+  entitlements  Entitlement[]
+  favorites     Favorite[]
+}
+
+model Creator {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slug            String   @unique
+  displayName     String
+  bio             String?
+  avatarUrl       String?
+  coverUrl        String?
+  logoUrl         String?
+  accentColor     String   @default("#6366f1")
+  fontPair        String   @default("inter")
+  // Stripe stays optional; not enforced anywhere yet.
+  stripeAccountId String?  @unique
+  stripeOnboarded Boolean  @default(false)
+  published       Boolean  @default(false)
+  publishedAt     DateTime?
+  // Custom domain (V4) — creator-owned host like "studio.example.com"
+  customDomain           String?              @unique
+  customDomainStatus     CustomDomainStatus?
+  customDomainAddedAt    DateTime?
+  customDomainVerifiedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  plan       Plan?
+  classes    Class[]
+  series     Series[]
+  courses    Course[]
+  tags       Tag[]
+  categories Category[]
+  menuItems  MenuItem[]
+}
+
+model Plan {
+  id                    String   @id @default(cuid())
+  creatorId             String   @unique
+  creator               Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  monthlyPriceCents     Int?
+  yearlyPriceCents      Int?
+  currency              String   @default("usd")
+  trialDays             Int      @default(0)
+  active                Boolean  @default(true)
+  // Stripe wiring (on the connected account)
+  stripeProductId       String?
+  stripeMonthlyPriceId  String?
+  stripeYearlyPriceId   String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+enum VideoProvider {
+  youtube
+  vimeo
+}
+
+enum CustomDomainStatus {
+  pending_dns
+  pending_verification
+  verified
+  active
+  error
+}
+
+model Class {
+  id              String        @id @default(cuid())
+  creatorId       String
+  creator         Creator       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  slug            String
+  title           String
+  description     String?
+  videoProvider   VideoProvider @default(youtube)
+  videoUrl        String
+  thumbnailUrl    String?
+  durationMins    Int?
+  visibleToPublic Boolean       @default(true)
+  freeForEveryone Boolean       @default(false)
+  standalone      Boolean       @default(true)
+  published       Boolean       @default(false)
+  publishedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  tags       Tag[]         @relation("ClassTags")
+  categories Category[]    @relation("ClassCategories")
+  series     SeriesClass[]
+  courses    CourseClass[]
+  favorites  Favorite[]
+
+  @@unique([creatorId, slug])
+}
+
+model Series {
+  id              String        @id @default(cuid())
+  creatorId       String
+  creator         Creator       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  slug            String
+  title           String
+  description     String?
+  coverUrl        String?
+  visibleToPublic Boolean       @default(true)
+  freeForEveryone Boolean       @default(false)
+  published       Boolean       @default(false)
+  publishedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  classes    SeriesClass[]
+  tags       Tag[]         @relation("SeriesTags")
+  categories Category[]    @relation("SeriesCategories")
+  favorites  Favorite[]
+
+  @@unique([creatorId, slug])
+}
+
+model SeriesClass {
+  seriesId String
+  series   Series  @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  classId  String
+  classRef Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  position Int
+
+  @@id([seriesId, classId])
+  @@index([seriesId, position])
+}
+
+model Course {
+  id              String        @id @default(cuid())
+  creatorId       String
+  creator         Creator       @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  slug            String
+  title           String
+  eyebrow         String?       // small uppercase text above title (e.g. "ELEVATE YOUR FLEXIBILITY")
+  description     String?
+  coverUrl        String?
+  priceCents      Int
+  currency        String        @default("usd")
+  visibleToPublic Boolean       @default(true)
+  published       Boolean       @default(false)
+  publishedAt     DateTime?
+  // Future Stripe wiring
+  stripeProductId String?
+  stripePriceId   String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  classes    CourseClass[]
+  tags       Tag[]         @relation("CourseTags")
+  categories Category[]    @relation("CourseCategories")
+  favorites  Favorite[]
+  purchases  Purchase[]
+
+  @@unique([creatorId, slug])
+}
+
+model CourseClass {
+  courseId    String
+  course      Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  classId     String
+  classRef    Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  moduleLabel String?
+  position    Int
+
+  @@id([courseId, classId])
+  @@index([courseId, position])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  creatorId String
+  creator   Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  name      String
+  slug      String
+  createdAt DateTime @default(now())
+
+  classes   Class[]   @relation("ClassTags")
+  series    Series[]  @relation("SeriesTags")
+  courses   Course[]  @relation("CourseTags")
+
+  @@unique([creatorId, slug])
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  creatorId   String
+  creator     Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  slug        String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  classes   Class[]    @relation("ClassCategories")
+  series    Series[]   @relation("SeriesCategories")
+  courses   Course[]   @relation("CourseCategories")
+  menuItems MenuItem[]
+
+  @@unique([creatorId, slug])
+  @@index([creatorId])
+}
+
+enum MenuItemType {
+  PAGE
+  CATEGORY
+  FAVOURITES
+}
+
+model MenuItem {
+  id         String       @id @default(cuid())
+  creatorId  String
+  creator    Creator      @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  name       String
+  type       MenuItemType
+  pageKey    String?      // when type=PAGE (e.g. "practice","courses")
+  categoryId String?      // when type=CATEGORY
+  category   Category?    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  position   Int
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@index([creatorId, position])
+}
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  classId   String?
+  classRef  Class?   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  seriesId  String?
+  series    Series?  @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  courseId  String?
+  course    Course?  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, classId])
+  @@unique([userId, seriesId])
+  @@unique([userId, courseId])
+  @@index([userId, createdAt])
+}
+
+enum BillingInterval {
+  month
+  year
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  canceled
+  incomplete
+  unpaid
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId               String
+  plan                 Plan               @relation(fields: [planId], references: [id])
+  interval             BillingInterval
+  // Stripe stays optional — bypass path can create local-only subscriptions.
+  stripeSubscriptionId String?            @unique
+  stripeCustomerId     String?
+  stripePriceId        String?            // Price the sub was created on — survives grandfathered repricing
+  status               SubscriptionStatus @default(active)
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  startedAt            DateTime           @default(now())
+  endedAt              DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  entitlements Entitlement[]
+
+  @@index([userId])
+}
+
+model Purchase {
+  id                    String   @id @default(cuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId              String
+  course                Course   @relation(fields: [courseId], references: [id])
+  amountCents           Int
+  currency              String
+  stripePaymentIntentId String?  @unique
+  createdAt             DateTime @default(now())
+
+  entitlements Entitlement[]
+
+  @@index([userId])
+  @@unique([userId, courseId])
+}
+
+enum EntitlementSource {
+  subscription
+  purchase
+  manual
+}
+
+/// Central paywall table.
+/// - subscription source → grants access to ALL Classes & Series of `creatorId`
+/// - purchase source     → grants access to one Course (`courseId`)
+model Entitlement {
+  id             String            @id @default(cuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source         EntitlementSource
+  creatorId      String?
+  courseId       String?
+  subscriptionId String?
+  subscription   Subscription?     @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  purchaseId     String?
+  purchase       Purchase?         @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  startsAt       DateTime          @default(now())
+  expiresAt      DateTime?
+  createdAt      DateTime          @default(now())
+
+  @@index([userId, expiresAt])
+  @@index([userId, creatorId])
+  @@index([userId, courseId])
+}
