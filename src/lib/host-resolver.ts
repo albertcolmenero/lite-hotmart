@@ -1,14 +1,13 @@
-import { db } from "./db";
+import {
+  invalidateDomainLookupCache,
+  lookupVerifiedCreatorSlugByNormalizedHost,
+} from "./domain-lookup";
 
 /**
- * host → creator slug resolution, with a small in-memory cache.
+ * host → creator slug resolution (Node / server contexts). Middleware uses
+ * `/api/internal/resolve-domain` instead so Edge never bundles Prisma.
  *
- * Called from middleware (every public request) and from any helper that
- * needs to detect the "we're on a custom domain" condition (`creator-url.ts`).
- *
- * Cache is intentionally tiny (60s TTL) — domain mappings change rarely;
- * if a creator changes their domain, worst-case latency is 60s before
- * traffic flips. We still serve correctly because we revalidate on miss.
+ * Cache lives in `domain-lookup.ts` (60s TTL).
  */
 
 const ROOT_DOMAIN_FALLBACK = "localhost:3000";
@@ -34,10 +33,6 @@ export function isRootHost(host: string): boolean {
   return false;
 }
 
-type CacheEntry = { slug: string | null; expiresAt: number };
-const TTL_MS = 60_000;
-const cache = new Map<string, CacheEntry>();
-
 /**
  * Returns the creator slug for a custom-domain host, or null if the host
  * is the root domain / unknown.
@@ -45,27 +40,10 @@ const cache = new Map<string, CacheEntry>();
 export async function getCreatorSlugForHost(host: string | null | undefined): Promise<string | null> {
   const h = normalizeHost(host);
   if (!h || isRootHost(h)) return null;
-
-  const now = Date.now();
-  const cached = cache.get(h);
-  if (cached && cached.expiresAt > now) return cached.slug;
-
-  const creator = await db.creator.findUnique({
-    where: { customDomain: h },
-    select: { slug: true, customDomainStatus: true },
-  });
-  // Only serve traffic when the domain is verified or active. `pending_dns` /
-  // `pending_verification` shouldn't render the storefront yet.
-  const slug =
-    creator && (creator.customDomainStatus === "verified" || creator.customDomainStatus === "active")
-      ? creator.slug
-      : null;
-
-  cache.set(h, { slug, expiresAt: now + TTL_MS });
-  return slug;
+  return lookupVerifiedCreatorSlugByNormalizedHost(h);
 }
 
 /** Manually invalidate the cache for a host (e.g. when domain status changes). */
 export function invalidateHostCache(host: string): void {
-  cache.delete(normalizeHost(host));
+  invalidateDomainLookupCache(normalizeHost(host));
 }

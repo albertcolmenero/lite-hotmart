@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { IS_DEV_BYPASS } from "./lib/dev-auth";
-import { getCreatorSlugForHost, isRootHost } from "./lib/host-resolver";
+import { getDomainLookupSecret } from "./lib/domain-lookup-auth";
+import { isRootHost } from "./lib/host-resolver";
 
 const isProtectedRoute = createRouteMatcher([
   "/studio(.*)",
@@ -29,6 +30,51 @@ function rootOrigin(): string {
   return env.replace(/\/$/, "");
 }
 
+/** Canonical server origin for internal middleware fetches (never the request Host when on custom domains). */
+function middlewareLookupBase(): string | null {
+  const fromPublic = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  if (fromPublic) return fromPublic;
+  const vercel = process.env.VERCEL_URL?.replace(/\/$/, "");
+  if (vercel) return `https://${vercel}`;
+  if (process.env.NODE_ENV === "development") return "http://localhost:3000";
+  return null;
+}
+
+/**
+ * Edge middleware cannot import Prisma. Resolve custom domain → slug via a
+ * Node route. Must always call the app's canonical origin — never use the
+ * incoming `Host`, or the fetch loops back through this middleware.
+ */
+async function getCreatorSlugForHostEdge(host: string): Promise<string | null> {
+  const secret = getDomainLookupSecret();
+  if (!secret) {
+    console.error(
+      "MIDDLEWARE_DOMAIN_LOOKUP_SECRET is required for custom domains in production",
+    );
+    return null;
+  }
+
+  const base = middlewareLookupBase();
+  if (!base) {
+    console.error(
+      "Set NEXT_PUBLIC_APP_URL or rely on VERCEL_URL (Vercel) for custom-domain resolution",
+    );
+    return null;
+  }
+
+  const url = new URL("/api/internal/resolve-domain", base);
+  url.searchParams.set("host", host);
+
+  const res = await fetch(url, {
+    headers: { "x-middleware-domain-lookup": secret },
+    cache: "no-store",
+  });
+
+  if (!res.ok) return null;
+  const data = (await res.json()) as { slug?: string | null };
+  return data.slug ?? null;
+}
+
 const clerkHandler = clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
     await auth.protect();
@@ -44,7 +90,7 @@ export default async function middleware(
 
   // Custom-domain branch — only meaningful for the storefront surface.
   if (host && !isRootHost(host)) {
-    const slug = await getCreatorSlugForHost(host);
+    const slug = await getCreatorSlugForHostEdge(host);
 
     if (!slug) {
       // Unknown host → fail closed.
