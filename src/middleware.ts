@@ -41,38 +41,123 @@ function middlewareLookupBase(): string | null {
 }
 
 /**
- * Edge middleware cannot import Prisma. Resolve custom domain → slug via a
- * Node route. Must always call the app's canonical origin — never use the
- * incoming `Host`, or the fetch loops back through this middleware.
+ * Result of a custom-domain lookup. Either a slug, or rich diagnostic info
+ * explaining why the lookup failed.
  */
-async function getCreatorSlugForHostEdge(host: string): Promise<string | null> {
+type LookupResult =
+  | { ok: true; slug: string; trace: string[] }
+  | { ok: false; reason: string; trace: string[] };
+
+async function getCreatorSlugForHostEdge(host: string): Promise<LookupResult> {
+  const trace: string[] = [];
+  const push = (s: string) => trace.push(s);
+
+  push(`host=${host}`);
+  push(`NEXT_PUBLIC_ROOT_DOMAIN=${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "(unset)"}`);
+  push(`NEXT_PUBLIC_APP_URL=${process.env.NEXT_PUBLIC_APP_URL ?? "(unset)"}`);
+  push(`VERCEL_URL=${process.env.VERCEL_URL ?? "(unset)"}`);
+  push(`NODE_ENV=${process.env.NODE_ENV}`);
+
   const secret = getDomainLookupSecret();
+  push(`secret_set=${Boolean(secret)} (len=${secret?.length ?? 0})`);
   if (!secret) {
-    console.error(
-      "MIDDLEWARE_DOMAIN_LOOKUP_SECRET is required for custom domains in production",
-    );
-    return null;
+    return { ok: false, reason: "MIDDLEWARE_DOMAIN_LOOKUP_SECRET not set", trace };
   }
 
   const base = middlewareLookupBase();
+  push(`lookup_base=${base ?? "(null)"}`);
   if (!base) {
-    console.error(
-      "Set NEXT_PUBLIC_APP_URL or rely on VERCEL_URL (Vercel) for custom-domain resolution",
-    );
-    return null;
+    return {
+      ok: false,
+      reason: "no lookup base — set NEXT_PUBLIC_APP_URL (with https://) or rely on VERCEL_URL",
+      trace,
+    };
   }
 
-  const url = new URL("/api/internal/resolve-domain", base);
+  let url: URL;
+  try {
+    url = new URL("/api/internal/resolve-domain", base);
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `invalid lookup base "${base}" — must include scheme (https://). ${(err as Error).message}`,
+      trace,
+    };
+  }
   url.searchParams.set("host", host);
+  push(`lookup_url=${url.toString()}`);
 
-  const res = await fetch(url, {
-    headers: { "x-middleware-domain-lookup": secret },
-    cache: "no-store",
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { "x-middleware-domain-lookup": secret },
+      cache: "no-store",
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `fetch threw: ${(err as Error).message}`,
+      trace,
+    };
+  }
+  push(`lookup_status=${res.status}`);
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "(unreadable)");
+    push(`lookup_body=${body.slice(0, 200)}`);
+    return {
+      ok: false,
+      reason: `lookup endpoint returned ${res.status}`,
+      trace,
+    };
+  }
+
+  let data: { slug?: string | null } | null;
+  try {
+    data = await res.json();
+  } catch {
+    return { ok: false, reason: "lookup response was not valid JSON", trace };
+  }
+  push(`lookup_json=${JSON.stringify(data)}`);
+
+  if (!data?.slug) {
+    return {
+      ok: false,
+      reason: `no verified Creator row matches host "${host}". Check Creator.customDomain + customDomainStatus in the DB (must be "verified" or "active").`,
+      trace,
+    };
+  }
+
+  return { ok: true, slug: data.slug, trace };
+}
+
+/**
+ * Render the lookup failure as a verbose JSON page. We deliberately do NOT
+ * leak secret values — only whether they are set and their lengths.
+ */
+function diagnosticResponse(host: string, result: { reason: string; trace: string[] }): NextResponse {
+  const body = JSON.stringify(
+    {
+      error: "Custom domain not resolved",
+      host,
+      reason: result.reason,
+      trace: result.trace,
+      hint:
+        "Check (1) Vercel env vars NEXT_PUBLIC_ROOT_DOMAIN / NEXT_PUBLIC_APP_URL / MIDDLEWARE_DOMAIN_LOOKUP_SECRET, " +
+        "(2) that the domain is attached in Vercel → Settings → Domains, " +
+        "(3) that the DB has a Creator row with customDomain matching this host and customDomainStatus in ('verified','active'). " +
+        "Run `pnpm check:domain " + host + "` locally to inspect the DB.",
+    },
+    null,
+    2,
+  );
+  return new NextResponse(body, {
+    status: 404,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "x-domain-lookup": "failed",
+    },
   });
-
-  if (!res.ok) return null;
-  const data = (await res.json()) as { slug?: string | null };
-  return data.slug ?? null;
 }
 
 const clerkHandler = clerkMiddleware(async (auth, req) => {
@@ -90,12 +175,18 @@ export default async function middleware(
 
   // Custom-domain branch — only meaningful for the storefront surface.
   if (host && !isRootHost(host)) {
-    const slug = await getCreatorSlugForHostEdge(host);
+    const result = await getCreatorSlugForHostEdge(host);
 
-    if (!slug) {
-      // Unknown host → fail closed.
-      return new NextResponse("Not Found", { status: 404 });
+    if (!result.ok) {
+      console.error("[middleware] custom-domain lookup failed", {
+        host,
+        reason: result.reason,
+        trace: result.trace,
+      });
+      return diagnosticResponse(host, result);
     }
+
+    const slug = result.slug;
 
     // Root-only paths should never serve from a custom domain → bounce to root.
     if (isRootOnlyPath(url.pathname)) {
@@ -103,9 +194,7 @@ export default async function middleware(
       return NextResponse.redirect(target, { status: 308 });
     }
 
-    // If the request already includes the /{slug}/... prefix (e.g. a stale
-    // link rendered before we shipped the URL helper), strip it. Redirect so
-    // the browser URL becomes clean.
+    // If the request already includes the /{slug}/... prefix, strip it.
     if (url.pathname === `/${slug}` || url.pathname.startsWith(`/${slug}/`)) {
       const stripped = url.pathname === `/${slug}` ? "/" : url.pathname.slice(slug.length + 1);
       const cleaned = new URL(stripped + url.search, url);
