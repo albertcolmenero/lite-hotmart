@@ -40,10 +40,6 @@ function middlewareLookupBase(): string | null {
   return null;
 }
 
-/**
- * Result of a custom-domain lookup. Either a slug, or rich diagnostic info
- * explaining why the lookup failed.
- */
 type LookupResult =
   | { ok: true; slug: string; trace: string[] }
   | { ok: false; reason: string; trace: string[] };
@@ -80,7 +76,7 @@ async function getCreatorSlugForHostEdge(host: string): Promise<LookupResult> {
   } catch (err) {
     return {
       ok: false,
-      reason: `invalid lookup base "${base}" — must include scheme (https://). ${(err as Error).message}`,
+      reason: `invalid lookup base "${base}" — must include scheme. ${(err as Error).message}`,
       trace,
     };
   }
@@ -105,11 +101,7 @@ async function getCreatorSlugForHostEdge(host: string): Promise<LookupResult> {
   if (!res.ok) {
     const body = await res.text().catch(() => "(unreadable)");
     push(`lookup_body=${body.slice(0, 200)}`);
-    return {
-      ok: false,
-      reason: `lookup endpoint returned ${res.status}`,
-      trace,
-    };
+    return { ok: false, reason: `lookup endpoint returned ${res.status}`, trace };
   }
 
   let data: { slug?: string | null } | null;
@@ -131,10 +123,6 @@ async function getCreatorSlugForHostEdge(host: string): Promise<LookupResult> {
   return { ok: true, slug: data.slug, trace };
 }
 
-/**
- * Render the lookup failure as a verbose JSON page. We deliberately do NOT
- * leak secret values — only whether they are set and their lengths.
- */
 function diagnosticResponse(host: string, result: { reason: string; trace: string[] }): NextResponse {
   const body = JSON.stringify(
     {
@@ -160,20 +148,22 @@ function diagnosticResponse(host: string, result: { reason: string; trace: strin
   });
 }
 
+/**
+ * Single clerkMiddleware that handles BOTH branches.
+ *
+ * Why: when a custom-domain request hits us, we must still go through
+ * clerkMiddleware so its headers get attached to whatever response we return.
+ * Otherwise downstream pages that call `auth()` panic with
+ *   "auth() was called but Clerk can't detect usage of clerkMiddleware()"
+ *
+ * Pattern: do the custom-domain rewrite *inside* the clerkMiddleware callback.
+ * Clerk merges its headers into our NextResponse before returning it.
+ */
 const clerkHandler = clerkMiddleware(async (auth, req) => {
-  if (isProtectedRoute(req)) {
-    await auth.protect();
-  }
-});
-
-export default async function middleware(
-  req: NextRequest,
-  ev: Parameters<typeof clerkHandler>[1],
-) {
   const url = req.nextUrl;
   const host = req.headers.get("host");
 
-  // Custom-domain branch — only meaningful for the storefront surface.
+  // ─────────────────────────── Custom-domain branch
   if (host && !isRootHost(host)) {
     const result = await getCreatorSlugForHostEdge(host);
 
@@ -208,7 +198,18 @@ export default async function middleware(
     return NextResponse.rewrite(rewritten);
   }
 
-  // Root-domain branch — existing Clerk auth flow.
+  // ─────────────────────────── Root-domain branch
+  if (isProtectedRoute(req)) {
+    await auth.protect();
+  }
+  // Implicit return → NextResponse.next() with Clerk headers attached.
+});
+
+export default async function middleware(
+  req: NextRequest,
+  ev: Parameters<typeof clerkHandler>[1],
+) {
+  // Dev bypass short-circuits Clerk entirely (no Clerk env required locally).
   if (IS_DEV_BYPASS) return NextResponse.next();
   return clerkHandler(req, ev);
 }
