@@ -1,9 +1,15 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { getCreatorForCurrentUser } from "@/lib/auth";
+import { getActiveCreator, getOrCreateDbUser } from "@/lib/auth";
+import { isSuperAdmin } from "@/lib/super-admin";
+import { db } from "@/lib/db";
 import { SavedFlash } from "@/components/saved-flash";
-import { StudioSidebar, type NavGroup } from "@/components/studio-sidebar";
+import {
+  StudioSidebar,
+  type NavGroup,
+  type SuperAdminProps,
+} from "@/components/studio-sidebar";
 
 const NAV: NavGroup[] = [
   {
@@ -32,6 +38,7 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/studio/plan", label: "Plan" },
       { href: "/studio/menu", label: "Menu" },
+      { href: "/studio/landing", label: "Home page" },
       { href: "/studio/branding", label: "Branding" },
       { href: "/studio/domain", label: "Domain" },
       { href: "/studio/settings", label: "Settings" },
@@ -39,9 +46,50 @@ const NAV: NavGroup[] = [
   },
 ];
 
-export default async function StudioLayout({ children }: { children: React.ReactNode }) {
-  const creator = await getCreatorForCurrentUser();
-  if (!creator) redirect("/onboarding");
+export default async function StudioLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const user = await getOrCreateDbUser();
+  if (!user) redirect("/sign-in");
+
+  const creator = await getActiveCreator();
+  const superAdmin = isSuperAdmin(user);
+
+  if (!creator) {
+    // Super admins without an active selection get a studio chooser.
+    // (The chooser lives outside this layout to avoid a redirect loop.)
+    // Regular users without a creator still go through onboarding.
+    if (superAdmin) redirect("/studio-select");
+    redirect("/onboarding");
+  }
+
+  // Build super-admin context for the sidebar switcher (only when applicable).
+  let superAdminProps: SuperAdminProps | undefined;
+  if (superAdmin) {
+    const [creators, ownCreator] = await Promise.all([
+      db.creator.findMany({
+        orderBy: { displayName: "asc" },
+        select: { id: true, slug: true, displayName: true },
+      }),
+      db.creator.findUnique({
+        where: { userId: user.id },
+        select: { id: true },
+      }),
+    ]);
+    superAdminProps = {
+      active: {
+        id: creator.id,
+        slug: creator.slug,
+        displayName: creator.displayName,
+      },
+      creators,
+      ownCreatorId: ownCreator?.id ?? null,
+    };
+  }
+
+  const isImpersonating = superAdmin && creator.userId !== user.id;
 
   return (
     <div
@@ -55,9 +103,26 @@ export default async function StudioLayout({ children }: { children: React.React
           displayName: creator.displayName,
           published: creator.published,
         }}
+        superAdmin={superAdminProps}
       />
 
       <main className="flex-1 overflow-y-auto">
+        {isImpersonating ? (
+          <div
+            className="px-6 lg:px-8 py-2.5 text-sm"
+            style={{
+              background: "var(--amber)",
+              color: "var(--paper)",
+            }}
+          >
+            <span className="truncate">
+              Viewing as <strong>{creator.displayName}</strong> · @{creator.slug} —
+              changes affect this creator&apos;s storefront. Use the switcher
+              top-left to exit.
+            </span>
+          </div>
+        ) : null}
+
         {!creator.published ? (
           <div
             className="px-6 lg:px-8 py-3 flex items-center justify-between gap-3 text-mono-sm"

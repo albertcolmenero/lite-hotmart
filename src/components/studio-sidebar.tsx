@@ -6,6 +6,10 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { UserMenu } from "@/components/user-menu";
+import {
+  StudioCreatorSwitcher,
+  type SwitcherCreator,
+} from "@/components/studio-creator-switcher";
 
 export type NavGroup = {
   label: string;
@@ -18,7 +22,21 @@ export type Creator = {
   published: boolean;
 };
 
-export function StudioSidebar({ nav, creator }: { nav: NavGroup[]; creator: Creator }) {
+export type SuperAdminProps = {
+  active: SwitcherCreator;
+  creators: SwitcherCreator[];
+  ownCreatorId: string | null;
+};
+
+export function StudioSidebar({
+  nav,
+  creator,
+  superAdmin,
+}: {
+  nav: NavGroup[];
+  creator: Creator;
+  superAdmin?: SuperAdminProps;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -33,7 +51,7 @@ export function StudioSidebar({ nav, creator }: { nav: NavGroup[]; creator: Crea
       >
         <Link href="/" className="flex items-center gap-2">
           <span className="inline-block w-5 h-5 rounded-md" style={{ background: "var(--ink)" }} />
-          <span className="font-medium tracking-tight">lite-hotmart</span>
+          <span className="font-medium tracking-tight">Lite Creator</span>
         </Link>
         <button
           type="button"
@@ -46,7 +64,7 @@ export function StudioSidebar({ nav, creator }: { nav: NavGroup[]; creator: Crea
         </button>
       </div>
 
-      <SidebarInner nav={nav} creator={creator} />
+      <SidebarInner nav={nav} creator={creator} superAdmin={superAdmin} />
 
       <AnimatePresence>
         {open ? (
@@ -74,7 +92,7 @@ export function StudioSidebar({ nav, creator }: { nav: NavGroup[]; creator: Crea
               >
                 <div className="flex items-center gap-2">
                   <span className="inline-block w-5 h-5 rounded-md" style={{ background: "var(--ink)" }} />
-                  <span className="font-medium tracking-tight">lite-hotmart</span>
+                  <span className="font-medium tracking-tight">Lite Creator</span>
                 </div>
                 <button
                   type="button"
@@ -86,7 +104,12 @@ export function StudioSidebar({ nav, creator }: { nav: NavGroup[]; creator: Crea
                   <X size={16} strokeWidth={2} />
                 </button>
               </div>
-              <DrawerNav nav={nav} creator={creator} onNav={() => setOpen(false)} />
+              <DrawerNav
+                nav={nav}
+                creator={creator}
+                superAdmin={superAdmin}
+                onNav={() => setOpen(false)}
+              />
             </motion.div>
           </div>
         ) : null}
@@ -95,7 +118,15 @@ export function StudioSidebar({ nav, creator }: { nav: NavGroup[]; creator: Crea
   );
 }
 
-function SidebarInner({ nav, creator }: { nav: NavGroup[]; creator: Creator }) {
+function SidebarInner({
+  nav,
+  creator,
+  superAdmin,
+}: {
+  nav: NavGroup[];
+  creator: Creator;
+  superAdmin?: SuperAdminProps;
+}) {
   const pathname = usePathname();
   return (
     <aside
@@ -111,9 +142,19 @@ function SidebarInner({ nav, creator }: { nav: NavGroup[]; creator: Creator }) {
       >
         <Link href="/" className="flex items-center gap-2">
           <span className="inline-block w-5 h-5 rounded-md" style={{ background: "var(--ink)" }} />
-          <span className="font-medium tracking-tight">lite-hotmart</span>
+          <span className="font-medium tracking-tight">Lite Creator</span>
         </Link>
       </div>
+
+      {superAdmin ? (
+        <div style={{ borderBottom: "1px solid var(--bone)" }}>
+          <StudioCreatorSwitcher
+            active={superAdmin.active}
+            creators={superAdmin.creators}
+            ownCreatorId={superAdmin.ownCreatorId}
+          />
+        </div>
+      ) : null}
 
       <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
         {nav.map((group) => (
@@ -159,15 +200,26 @@ function SidebarInner({ nav, creator }: { nav: NavGroup[]; creator: Creator }) {
 function DrawerNav({
   nav,
   creator,
+  superAdmin,
   onNav,
 }: {
   nav: NavGroup[];
   creator: Creator;
+  superAdmin?: SuperAdminProps;
   onNav: () => void;
 }) {
   const pathname = usePathname();
   return (
     <div className="flex-1 flex flex-col">
+      {superAdmin ? (
+        <div style={{ borderBottom: "1px solid var(--bone)" }}>
+          <StudioCreatorSwitcher
+            active={superAdmin.active}
+            creators={superAdmin.creators}
+            ownCreatorId={superAdmin.ownCreatorId}
+          />
+        </div>
+      ) : null}
       <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
         {nav.map((group) => (
           <div key={group.label}>

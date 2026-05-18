@@ -27,7 +27,7 @@ export default async function OnboardingPage() {
             <Field label="Public URL" hint="Lowercase, numbers, dashes">
               <div className="input flex items-baseline" style={{ padding: "0.5rem 0.75rem" }}>
                 <span className="text-mono-sm pr-1 shrink-0" style={{ color: "var(--lichen)" }}>
-                  lite-hotmart.com/
+                  lite-creator.com/
                 </span>
                 <input
                   name="slug"

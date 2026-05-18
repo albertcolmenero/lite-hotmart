@@ -1,5 +1,10 @@
 import { db } from "./db";
 import { DEV_CLERK_ID, DEV_EMAIL, DEV_NAME, IS_DEV_BYPASS } from "./dev-auth";
+import {
+  clearActiveCreatorCookie,
+  isSuperAdmin,
+  readActiveCreatorCookie,
+} from "./super-admin";
 
 async function currentClerkUserId(): Promise<string | null> {
   if (IS_DEV_BYPASS) return DEV_CLERK_ID;
@@ -61,11 +66,37 @@ export async function requireDbUser() {
   return user;
 }
 
-export async function getCreatorForCurrentUser() {
+/**
+ * Returns the creator the current viewer should operate on. For regular users
+ * that's always their own creator. For super admins, this respects the
+ * `lh_studio_creator` cookie so they can "view as" another publisher.
+ *
+ * If the cookie points at a creator that doesn't exist (or the viewer is no
+ * longer super admin), the cookie is silently cleared and we fall back to the
+ * user's own creator.
+ */
+export async function getActiveCreator() {
   const user = await getOrCreateDbUser();
   if (!user) return null;
+
+  if (isSuperAdmin(user)) {
+    const targetId = await readActiveCreatorCookie();
+    if (targetId) {
+      const target = await db.creator.findUnique({ where: { id: targetId } });
+      if (target) return target;
+      // Stale cookie — clean up so we don't keep re-checking a ghost id.
+      await clearActiveCreatorCookie();
+    }
+  }
+
   return db.creator.findUnique({ where: { userId: user.id } });
 }
+
+/**
+ * @deprecated kept as an alias so existing imports continue to work.
+ * Prefer `getActiveCreator()` for new code.
+ */
+export const getCreatorForCurrentUser = getActiveCreator;
 
 /** Re-export so route handlers can read the clerk id without importing Clerk directly. */
 export { currentClerkUserId };

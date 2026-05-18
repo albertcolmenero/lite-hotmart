@@ -7,12 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserRole {
+  user
+  super_admin
+}
+
 model User {
   id            String   @id @default(cuid())
   clerkId       String   @unique
   email         String   @unique
   name          String?
   imageUrl      String?
+  role          UserRole @default(user)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -30,11 +36,13 @@ model Creator {
   slug            String   @unique
   displayName     String
   bio             String?
+  homeContent     Json?
   avatarUrl       String?
   coverUrl        String?
   logoUrl         String?
   accentColor     String   @default("#6366f1")
   fontPair        String   @default("inter")
+  themeId         String?
   // Stripe stays optional; not enforced anywhere yet.
   stripeAccountId String?  @unique
   stripeOnboarded Boolean  @default(false)

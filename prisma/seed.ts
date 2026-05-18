@@ -261,6 +261,17 @@ async function main() {
     },
   });
 
+  // 9. Bootstrap super-admin role. Idempotent — no-op if the user doesn't
+  // exist on this DB yet (e.g. first run on a fresh stage). Once the user
+  // signs in once, the role sticks.
+  const promotedRows = await db.user.updateMany({
+    where: { email: "albert.colmenero@gmail.com" },
+    data: { role: "super_admin" },
+  });
+  if (promotedRows.count > 0) {
+    console.log(`  - albert.colmenero@gmail.com promoted to super_admin`);
+  }
+
   console.log(`✓ Seeded V2 dev data:`);
   console.log(`  - 1 creator (@${creator.slug})`);
   console.log(`  - 1 plan ($${plan.monthlyPriceCents! / 100}/mo, $${plan.yearlyPriceCents! / 100}/yr)`);

@@ -5,7 +5,7 @@ import { Toaster } from "@/components/toaster";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "lite-hotmart — the studio behind your studio",
+  title: "Lite Creator — the studio behind your studio",
   description:
     "Memberships, courses, and a place to gather the people who actually read what you make.",
 };

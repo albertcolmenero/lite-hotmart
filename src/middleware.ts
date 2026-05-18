@@ -7,6 +7,7 @@ import { isRootHost } from "./lib/host-resolver";
 
 const isProtectedRoute = createRouteMatcher([
   "/studio(.*)",
+  "/studio-select(.*)",
   "/library(.*)",
   "/onboarding(.*)",
 ]);
@@ -14,6 +15,7 @@ const isProtectedRoute = createRouteMatcher([
 /** Paths that must never serve from a custom domain — they belong on the root. */
 const ROOT_ONLY_PREFIXES = [
   "/studio",
+  "/studio-select",
   "/library",
   "/onboarding",
   "/sign-in",

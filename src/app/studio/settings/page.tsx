@@ -1,8 +1,16 @@
 import { getCreatorForCurrentUser } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { StripeStatusCard } from "@/components/stripe-status";
 
 export default async function SettingsPage() {
   const creator = (await getCreatorForCurrentUser())!;
+  // Owner's email — when a super-admin is viewing as another creator, this is
+  // the owning user's email, not the viewer's.
+  const owner = await db.user.findUnique({
+    where: { id: creator.userId },
+    select: { email: true },
+  });
+
   return (
     <div className="max-w-2xl space-y-7">
       <header>
@@ -13,6 +21,7 @@ export default async function SettingsPage() {
       </header>
 
       <div className="card overflow-hidden">
+        <Row k="Owner" v={owner?.email ?? "—"} />
         <Row k="Public URL" v={`/${creator.slug}`} />
         <Row
           k="Custom domain"
