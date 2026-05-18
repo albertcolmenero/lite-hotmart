@@ -5,15 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatCents } from "@/lib/utils";
 
-export function LandingPlanCard({
-  creatorId,
-  accentColor,
-  plan,
-  signedIn,
-  /** When true the creator has connected Stripe (or bypass is in effect). When false,
-   * paid prices render but the action buttons are disabled with a "coming soon" hint. */
-  billingReady = true,
-}: {
+export type LandingPlanCardProps = {
   creatorId: string;
   accentColor: string;
   plan: {
@@ -22,8 +14,18 @@ export function LandingPlanCard({
     currency: string;
   };
   signedIn: boolean;
+  /** When true the creator has connected Stripe (or bypass is in effect). When false,
+   * paid prices render but the action buttons are disabled with a "coming soon" hint. */
   billingReady?: boolean;
-}) {
+};
+
+export function LandingPlanCard({
+  creatorId,
+  accentColor,
+  plan,
+  signedIn,
+  billingReady = true,
+}: LandingPlanCardProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);

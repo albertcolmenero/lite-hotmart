@@ -25,7 +25,10 @@ export default async function StorefrontLayout({
   const isMember = viewer ? await hasActiveSubscription(viewer.id, creator.id) : false;
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-white">
+    <div
+      className="flex-1 flex flex-col min-h-screen"
+      style={{ background: "var(--surface)" }}
+    >
       {isOwner && !creator.published ? <PreviewBanner /> : null}
       <StorefrontHeader
         creatorSlug={creator.slug}

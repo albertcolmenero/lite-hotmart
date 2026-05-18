@@ -22,6 +22,7 @@ export function ClassCard({
   cls,
   locked,
   paywall,
+  category,
 }: {
   creatorSlug: string;
   cls: {
@@ -33,6 +34,7 @@ export function ClassCard({
   };
   locked?: boolean;
   paywall?: CardPaywall;
+  category?: string;
 }) {
   const thumb = cls.thumbnailUrl || youtubeThumbnail(cls.videoUrl) || null;
   const [paywallOpen, setPaywallOpen] = useState(false);
@@ -74,8 +76,13 @@ export function ClassCard({
         </div>
       </div>
       <div className="p-4">
+        {category ? (
+          <div className="text-mono-sm" style={{ color: "var(--muted)" }}>
+            {category}
+          </div>
+        ) : null}
         <div
-          className="font-medium"
+          className={category ? "mt-1 font-medium" : "font-medium"}
           style={{
             fontSize: "0.9375rem",
             letterSpacing: "-0.01em",
@@ -134,11 +141,13 @@ export function SeriesCard({
   series,
   classCount,
   locked,
+  category,
 }: {
   creatorSlug: string;
   series: { slug: string; title: string; coverUrl: string | null };
   classCount: number;
   locked?: boolean;
+  category?: string;
 }) {
   return (
     <Link
@@ -182,8 +191,13 @@ export function SeriesCard({
         </span>
       </div>
       <div className="p-4">
+        {category ? (
+          <div className="text-mono-sm" style={{ color: "var(--muted)" }}>
+            {category}
+          </div>
+        ) : null}
         <div
-          className="font-medium"
+          className={category ? "mt-1 font-medium" : "font-medium"}
           style={{
             fontSize: "1rem",
             letterSpacing: "-0.01em",
@@ -206,6 +220,7 @@ export function SeriesCard({
 export function CourseCard({
   creatorSlug,
   course,
+  category,
 }: {
   creatorSlug: string;
   course: {
@@ -216,6 +231,7 @@ export function CourseCard({
     priceCents: number;
     currency: string;
   };
+  category?: string;
 }) {
   return (
     <Link
@@ -250,13 +266,18 @@ export function CourseCard({
         </span>
       </div>
       <div className="p-4">
+        {category ? (
+          <div className="text-mono-sm" style={{ color: "var(--muted)" }}>
+            {category}
+          </div>
+        ) : null}
         {course.eyebrow ? (
           <div className="text-mono-sm" style={{ color: "var(--muted)" }}>
             {course.eyebrow}
           </div>
         ) : null}
         <div
-          className="mt-1 font-medium"
+          className={category || course.eyebrow ? "mt-1 font-medium" : "font-medium"}
           style={{
             fontSize: "1.0625rem",
             letterSpacing: "-0.015em",
