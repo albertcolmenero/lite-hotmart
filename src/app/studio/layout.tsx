@@ -93,8 +93,19 @@ export default async function StudioLayout({
 
   return (
     <div
-      className="flex flex-1 min-h-screen lg:flex-row flex-col"
-      style={{ background: "var(--surface-page)" }}
+      className="flex lg:flex-row flex-col"
+      style={{
+        // Pin the studio shell to the viewport so the sidebar is always
+        // exactly window-tall and only <main> scrolls. `top` accounts for
+        // any chrome the root layout paints above us (e.g. the
+        // DEV_AUTH_BYPASS banner).
+        position: "fixed",
+        top: "var(--app-chrome-h, 0px)",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: "var(--surface-page)",
+      }}
     >
       <StudioSidebar
         nav={NAV}
@@ -106,7 +117,7 @@ export default async function StudioLayout({
         superAdmin={superAdminProps}
       />
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 min-h-0 overflow-y-auto">
         {isImpersonating ? (
           <div
             className="px-6 lg:px-8 py-2.5 text-sm"

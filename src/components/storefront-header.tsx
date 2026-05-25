@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, User, Crown } from "lucide-react";
+import { User, Crown } from "lucide-react";
 
 export type StorefrontTab = {
   id: string;
@@ -107,14 +107,6 @@ export function StorefrontHeader({
           >
             <User size={18} strokeWidth={1.75} />
           </Link>
-          <button
-            type="button"
-            aria-label="Menu"
-            className="inline-flex items-center justify-center w-9 h-9 rounded-md transition-colors hover:bg-[color:var(--stone)]"
-            style={{ color: "var(--lichen)" }}
-          >
-            <Menu size={18} strokeWidth={1.75} />
-          </button>
         </div>
       </div>
     </header>

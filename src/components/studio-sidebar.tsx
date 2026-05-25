@@ -156,7 +156,7 @@ function SidebarInner({
         </div>
       ) : null}
 
-      <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+      <nav className="flex-1 min-h-0 px-3 py-4 space-y-5 overflow-y-auto">
         {nav.map((group) => (
           <div key={group.label}>
             <div
@@ -220,7 +220,7 @@ function DrawerNav({
           />
         </div>
       ) : null}
-      <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+      <nav className="flex-1 min-h-0 px-3 py-4 space-y-5 overflow-y-auto">
         {nav.map((group) => (
           <div key={group.label}>
             <div className="text-xs font-medium px-3 mb-1.5" style={{ color: "var(--muted)" }}>

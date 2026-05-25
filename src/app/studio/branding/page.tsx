@@ -1,5 +1,7 @@
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { FormCard, Field } from "@/components/studio-form";
+import { ThemeTile } from "@/components/theme-tile";
+import { STOREFRONT_THEMES, DEFAULT_THEME_ID } from "@/lib/themes";
 import { updateBrandingAction } from "./actions";
 
 export default async function BrandingPage() {
@@ -74,6 +76,20 @@ export default async function BrandingPage() {
               </select>
             </Field>
           </div>
+          <Field label="Site theme" hint="Background + text colors for your storefront">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {STOREFRONT_THEMES.map((t) => (
+                <ThemeTile
+                  key={t.id}
+                  theme={t}
+                  mode="selectable"
+                  defaultChecked={
+                    (creator.themeId ?? DEFAULT_THEME_ID) === t.id
+                  }
+                />
+              ))}
+            </div>
+          </Field>
         </FormCard>
 
         <button type="submit" className="btn btn-primary">Save branding</button>
