@@ -96,7 +96,7 @@ export default async function AnalyticsPage() {
                   lineHeight: 1,
                 }}
               >
-                {formatCents(currentMRR)}
+                {formatCents(currentMRR, creator.currency)}
               </span>
               <span
                 className="inline-flex items-center gap-1 text-sm font-medium"
@@ -107,8 +107,8 @@ export default async function AnalyticsPage() {
             </div>
           </div>
           <div className="text-right text-mono-sm" style={{ color: "var(--lichen)" }}>
-            <div>High · <span className="tabular">{formatCents(Math.max(...series))}</span></div>
-            <div>Low · <span className="tabular">{formatCents(Math.min(...series))}</span></div>
+            <div>High · <span className="tabular">{formatCents(Math.max(...series), creator.currency)}</span></div>
+            <div>Low · <span className="tabular">{formatCents(Math.min(...series), creator.currency)}</span></div>
           </div>
         </div>
         <div className="mt-5">
@@ -163,7 +163,7 @@ export default async function AnalyticsPage() {
               lineHeight: 1,
             }}
           >
-            {formatCents(courseRevenue)}
+            {formatCents(courseRevenue, creator.currency)}
           </div>
           <div className="mt-1.5 text-sm" style={{ color: "var(--lichen)" }}>
             {purchases.length} {purchases.length === 1 ? "purchase" : "purchases"}

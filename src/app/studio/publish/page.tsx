@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Check } from "lucide-react";
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { formatCents } from "@/lib/utils";
 import { publishCreatorAction, unpublishCreatorAction } from "./actions";
 import { PublishCelebration } from "./_celebration";
 
@@ -67,7 +68,7 @@ export default async function PublishPage() {
         title="Subscription plan"
         body={
           plan && planSet
-            ? `Monthly ${plan.monthlyPriceCents != null ? `$${plan.monthlyPriceCents / 100}` : "—"} · Yearly ${plan.yearlyPriceCents != null ? `$${plan.yearlyPriceCents / 100}` : "—"}`
+            ? `Monthly ${plan.monthlyPriceCents != null ? formatCents(plan.monthlyPriceCents, plan.currency) : "—"} · Yearly ${plan.yearlyPriceCents != null ? formatCents(plan.yearlyPriceCents, plan.currency) : "—"}`
             : "Set monthly and/or yearly pricing."
         }
         cta={{ label: "Manage plan", href: "/studio/plan" }}

@@ -9,6 +9,16 @@ import type { BillingInterval } from "@prisma/client";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
+/**
+ * Per-day bucket for Checkout idempotency keys. A double-click the same day
+ * reuses the same Stripe Checkout Session (no duplicate session); a genuine
+ * retry tomorrow gets a fresh one. This is a "happened ~now" dedup window, not
+ * a persisted recomputed deadline, so deriving it from the clock is fine.
+ */
+function dayBucket(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export type SubscribeResult = {
   subscriptionId?: string;
   redirectUrl?: string;
@@ -121,7 +131,10 @@ export async function subscribeToCreatorAction(input: {
       success_url: `${APP_URL}/library/${plan.creator.slug}?subscribed=1`,
       cancel_url: `${APP_URL}/${plan.creator.slug}`,
     },
-    { stripeAccount: plan.creator.stripeAccountId! },
+    {
+      stripeAccount: plan.creator.stripeAccountId!,
+      idempotencyKey: `sub_${user.id}_${plan.id}_${input.interval}_${dayBucket()}`,
+    },
   );
 
   if (!session.url) throw new Error("Stripe did not return a Checkout URL.");
@@ -206,7 +219,10 @@ export async function purchaseCourseAction(courseId: string): Promise<PurchaseRe
       success_url: `${APP_URL}/${course.creator.slug}/courses/${course.slug}?purchased=1`,
       cancel_url: `${APP_URL}/${course.creator.slug}/courses/${course.slug}`,
     },
-    { stripeAccount: course.creator.stripeAccountId! },
+    {
+      stripeAccount: course.creator.stripeAccountId!,
+      idempotencyKey: `course_${user.id}_${course.id}_${dayBucket()}`,
+    },
   );
 
   if (!session.url) throw new Error("Stripe did not return a Checkout URL.");

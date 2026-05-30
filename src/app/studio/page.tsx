@@ -49,7 +49,7 @@ export default async function StudioOverviewPage() {
         className="grid grid-cols-2 md:grid-cols-4 gap-px overflow-hidden card"
         style={{ background: "var(--bone)" }}
       >
-        <Stat label="MRR" value={formatCents(Math.round(mrrCents))} hint="monthly recurring" />
+        <Stat label="MRR" value={formatCents(Math.round(mrrCents), creator.currency)} hint="monthly recurring" />
         <Stat label="Subscribers" value={String(activeSubs.length)} hint="active now" />
         <Stat
           label="Library"
@@ -60,12 +60,12 @@ export default async function StudioOverviewPage() {
           label="Plan"
           value={
             plan && plan.active && plan.monthlyPriceCents != null
-              ? formatCents(plan.monthlyPriceCents)
+              ? formatCents(plan.monthlyPriceCents, plan.currency)
               : "—"
           }
           hint={
             plan && plan.yearlyPriceCents != null
-              ? `or ${formatCents(plan.yearlyPriceCents)}/yr`
+              ? `or ${formatCents(plan.yearlyPriceCents, plan.currency)}/yr`
               : "monthly"
           }
         />

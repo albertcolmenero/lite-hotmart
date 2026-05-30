@@ -2,6 +2,8 @@ import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { FormCard, Field, ToggleRow } from "@/components/studio-form";
 import { StripeStatusCard, getStripeStatus } from "@/components/stripe-status";
+import { DEFAULT_CURRENCY } from "@/lib/currency";
+import { PricingFields } from "./_pricing-fields";
 import { upsertPlanAction } from "./actions";
 
 export default async function PlanPage() {
@@ -9,6 +11,9 @@ export default async function PlanPage() {
   const plan = await db.plan.findUnique({ where: { creatorId: creator.id } });
   const status = getStripeStatus(creator);
   const hasPaidPrice = Boolean(plan?.monthlyPriceCents || plan?.yearlyPriceCents);
+  // Fall back to USD so the page never hard-crashes if currency is missing
+  // (e.g. before the Creator.currency column is pushed, or a stale client).
+  const currency = creator.currency ?? DEFAULT_CURRENCY;
 
   return (
     <div className="max-w-2xl space-y-7">
@@ -21,40 +26,15 @@ export default async function PlanPage() {
 
       <form action={upsertPlanAction} className="space-y-5">
         <FormCard title="Pricing" description="Leave either blank to disable that cadence.">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Monthly price" hint="USD">
-              <div className="input flex items-baseline" style={{ padding: "0.5rem 0.75rem" }}>
-                <span style={{ color: "var(--lichen)" }}>$</span>
-                <input
-                  name="monthlyDollars"
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  defaultValue={plan?.monthlyPriceCents != null ? plan.monthlyPriceCents / 100 : ""}
-                  className="flex-1 ml-1 bg-transparent outline-none tabular"
-                  style={{ fontSize: "1.25rem", fontWeight: 600, color: "var(--ink)" }}
-                />
-              </div>
-            </Field>
-            <Field label="Yearly price" hint="USD">
-              <div className="input flex items-baseline" style={{ padding: "0.5rem 0.75rem" }}>
-                <span style={{ color: "var(--lichen)" }}>$</span>
-                <input
-                  name="yearlyDollars"
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  defaultValue={plan?.yearlyPriceCents != null ? plan.yearlyPriceCents / 100 : ""}
-                  className="flex-1 ml-1 bg-transparent outline-none tabular"
-                  style={{ fontSize: "1.25rem", fontWeight: 600, color: "var(--ink)" }}
-                />
-              </div>
-            </Field>
-          </div>
+          <PricingFields
+            defaultCurrency={currency}
+            monthlyCents={plan?.monthlyPriceCents ?? null}
+            yearlyCents={plan?.yearlyPriceCents ?? null}
+          />
 
           {plan && hasPaidPrice && status === "connected" ? (
             <p className="text-sm" style={{ color: "var(--lichen)" }}>
-              Existing subscribers keep their current price. Changes apply only to new sign-ups.
+              Existing subscribers keep their current price and currency. Changes apply only to new sign-ups.
             </p>
           ) : null}
 

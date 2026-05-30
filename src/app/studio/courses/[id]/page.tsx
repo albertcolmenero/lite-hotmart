@@ -63,6 +63,7 @@ export default async function CourseEditPage({
             classes={classes}
             tags={tags}
             categories={categories}
+            currency={creator.currency}
             defaults={{
               title: course.title,
               eyebrow: course.eyebrow,

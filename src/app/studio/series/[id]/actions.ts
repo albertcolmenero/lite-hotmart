@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { assertOwned } from "@/lib/ownership";
 
 const schema = z.object({
   id: z.string().min(1),
@@ -38,6 +39,9 @@ export async function updateSeriesAction(formData: FormData) {
   const orderedClassIds = orderedAll.filter((id) => checked.has(id));
   const tagIds = formData.getAll("tagIds").map(String);
   const categoryIds = formData.getAll("categoryIds").map(String);
+  await assertOwned("tag", tagIds, creator.id);
+  await assertOwned("category", categoryIds, creator.id);
+  await assertOwned("class", orderedClassIds, creator.id);
   const becomingPublished = parsed.published && !existing.published;
 
   await db.$transaction([

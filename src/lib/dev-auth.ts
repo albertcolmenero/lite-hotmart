@@ -12,10 +12,16 @@
 export const IS_DEV_BYPASS = process.env.DEV_AUTH_BYPASS === "1";
 
 /**
- * Skip Stripe entirely. Subscribe / Buy actions create the Subscription /
- * Purchase / Entitlement rows directly. Default ON in V2 (Stripe wired later).
+ * Force-skip Stripe. When set, Subscribe / Buy actions create the Subscription /
+ * Purchase / Entitlement rows directly instead of charging.
+ *
+ * OPT-IN ONLY (`=1`). It defaults OFF so production charges real cards. Even
+ * when off, creators who haven't completed Stripe onboarding still fall back to
+ * the free path (see `creatorIsLive` in payments.ts) — so the dev seed creator
+ * keeps working without this flag. NEVER set BYPASS_PAYMENTS=1 in production:
+ * it would hand out subscriptions and courses for free.
  */
-export const BYPASS_PAYMENTS = process.env.BYPASS_PAYMENTS !== "0";
+export const BYPASS_PAYMENTS = process.env.BYPASS_PAYMENTS === "1";
 
 export const DEV_CLERK_ID = "dev_user_local";
 export const DEV_EMAIL = "dev@local.test";

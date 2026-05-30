@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { assertOwned } from "@/lib/ownership";
 
 const schema = z.object({
   id: z.string().min(1),
@@ -30,6 +31,9 @@ export async function updateCategoryAction(formData: FormData) {
   const classIds = formData.getAll("classIds").map(String);
   const seriesIds = formData.getAll("seriesIds").map(String);
   const courseIds = formData.getAll("courseIds").map(String);
+  await assertOwned("class", classIds, creator.id);
+  await assertOwned("series", seriesIds, creator.id);
+  await assertOwned("course", courseIds, creator.id);
 
   await db.category.update({
     where: { id: parsed.id },

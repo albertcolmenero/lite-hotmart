@@ -1,26 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import type Stripe from "stripe";
+import { z } from "zod";
 import { stripe } from "@/lib/stripe";
 import { db } from "@/lib/db";
+import { log } from "@/lib/log";
 import type { BillingInterval, SubscriptionStatus } from "@prisma/client";
 
 /**
  * Connect-aware Stripe webhook endpoint.
  *
- * Configure in Stripe with the events:
- *   - checkout.session.completed
- *   - customer.subscription.created
- *   - customer.subscription.updated
- *   - customer.subscription.deleted
- *   - invoice.payment_failed
- *   - account.updated
+ * Events handled:
+ *   - checkout.session.completed             linkage + one-time course purchase
+ *   - customer.subscription.created/updated  sync status, period, entitlement
+ *   - customer.subscription.deleted          cancel
+ *   - invoice.payment_failed                 mark past_due
+ *   - charge.refunded                        revoke access on a FULL refund
+ *   - charge.dispute.created                 revoke access when a dispute opens
+ *   - account.updated                        sync onboarding / restriction state
+ *
+ * Idempotency: every state-mutating handler is keyed on a Stripe id via
+ * `upsert` / `updateMany`, so duplicate deliveries replay safely. Multi-row
+ * writes run inside `db.$transaction` so a mid-handler crash can't leave half
+ * state. On handler error we return 500 so Stripe retries.
  *
  * Use "Connect" event mode so events from connected accounts hit this endpoint.
- * For local dev:
+ * Local dev:
  *   stripe listen \
  *     --forward-to localhost:3000/api/webhooks/stripe \
  *     --forward-connect-to localhost:3000/api/webhooks/stripe
  */
+
+// Metadata we set on Checkout Sessions in payments.ts. Validated before trust.
+const checkoutMetaSchema = z.object({
+  kind: z.enum(["subscription", "course"]),
+  userId: z.string().min(1),
+  creatorId: z.string().min(1),
+  planId: z.string().optional(),
+  interval: z.enum(["month", "year"]).optional(),
+  courseId: z.string().optional(),
+});
+
 export async function POST(req: NextRequest) {
   const sig = req.headers.get("stripe-signature");
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -39,11 +58,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const connectedAccountId = event.account; // present on Connect events
   try {
     switch (event.type) {
       case "checkout.session.completed":
-        await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session, connectedAccountId);
+        await handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
         break;
       case "customer.subscription.created":
       case "customer.subscription.updated":
@@ -55,6 +73,12 @@ export async function POST(req: NextRequest) {
       case "invoice.payment_failed":
         await handleInvoiceFailed(event.data.object as Stripe.Invoice);
         break;
+      case "charge.refunded":
+        await handleChargeRefunded(event.data.object as Stripe.Charge);
+        break;
+      case "charge.dispute.created":
+        await handleDisputeCreated(event.data.object as Stripe.Dispute);
+        break;
       case "account.updated":
         await handleAccountUpdated(event.data.object as Stripe.Account);
         break;
@@ -63,7 +87,12 @@ export async function POST(req: NextRequest) {
         break;
     }
   } catch (err) {
-    console.error("[stripe webhook]", event.type, err);
+    log("error", "stripe webhook handler failed", {
+      type: event.type,
+      eventId: event.id,
+      account: event.account ?? null,
+      error: (err as Error).message,
+    });
     return NextResponse.json({ error: "handler failed" }, { status: 500 });
   }
 
@@ -72,59 +101,64 @@ export async function POST(req: NextRequest) {
 
 // ---------------------------------------------------------------- checkout
 
-async function handleCheckoutCompleted(
-  session: Stripe.Checkout.Session,
-  _connectedAccountId: string | undefined,
-) {
-  const meta = session.metadata ?? {};
-  const kind = meta.kind;
-  const userId = meta.userId;
-  const creatorId = meta.creatorId;
-  if (!userId || !creatorId || !kind) return;
-
-  // ─── subscription
-  if (kind === "subscription" && session.subscription) {
-    // The subscription.created event will populate full details.
-    // Here we just make sure we know the linkage from session.metadata.
+async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  const parsed = checkoutMetaSchema.safeParse(session.metadata ?? {});
+  if (!parsed.success) {
+    log("warn", "checkout.session.completed: unrecognized metadata; ignoring", {
+      sessionId: session.id,
+      invalidFields: parsed.error.issues.map((i) => i.path.join(".")),
+    });
     return;
   }
+  const meta = parsed.data;
 
-  // ─── one-time course purchase
-  if (kind === "course" && session.payment_intent) {
+  // Subscriptions: full details arrive via customer.subscription.created.
+  if (meta.kind === "subscription") return;
+
+  // One-time course purchase.
+  if (meta.kind === "course" && session.payment_intent) {
     const courseId = meta.courseId;
-    if (!courseId) return;
+    if (!courseId) {
+      log("warn", "course checkout missing courseId metadata", { sessionId: session.id });
+      return;
+    }
     const course = await db.course.findUnique({ where: { id: courseId } });
-    if (!course) return;
+    if (!course) {
+      log("warn", "course checkout for unknown course", { courseId, sessionId: session.id });
+      return;
+    }
 
     const piId =
       typeof session.payment_intent === "string"
         ? session.payment_intent
         : session.payment_intent.id;
 
-    const purchase = await db.purchase.upsert({
-      where: { stripePaymentIntentId: piId },
-      update: {},
-      create: {
-        userId,
-        courseId,
-        amountCents: session.amount_total ?? course.priceCents,
-        currency: session.currency ?? course.currency,
-        stripePaymentIntentId: piId,
-      },
+    await db.$transaction(async (tx) => {
+      const purchase = await tx.purchase.upsert({
+        where: { stripePaymentIntentId: piId },
+        update: {},
+        create: {
+          userId: meta.userId,
+          courseId,
+          amountCents: session.amount_total ?? course.priceCents,
+          currency: session.currency ?? course.currency,
+          stripePaymentIntentId: piId,
+        },
+      });
+      await tx.entitlement.upsert({
+        where: { id: `purchase_${purchase.id}` },
+        update: {},
+        create: {
+          id: `purchase_${purchase.id}`,
+          userId: meta.userId,
+          source: "purchase",
+          purchaseId: purchase.id,
+          courseId,
+          expiresAt: null,
+        },
+      });
     });
-
-    await db.entitlement.upsert({
-      where: { id: `purchase_${purchase.id}` },
-      update: {},
-      create: {
-        id: `purchase_${purchase.id}`,
-        userId,
-        source: "purchase",
-        purchaseId: purchase.id,
-        courseId,
-        expiresAt: null,
-      },
-    });
+    log("info", "course purchase recorded", { courseId, userId: meta.userId, piId });
   }
 }
 
@@ -134,19 +168,22 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   const priceId = sub.items.data[0]?.price.id;
   if (!priceId) return;
 
-  // Find the local Plan by either monthly or yearly price id
+  // Find the local Plan by either monthly or yearly price id.
   const plan = await db.plan.findFirst({
     where: {
       OR: [{ stripeMonthlyPriceId: priceId }, { stripeYearlyPriceId: priceId }],
     },
     include: { creator: true },
   });
-  if (!plan) return;
+  if (!plan) {
+    log("warn", "subscription event for unknown price", { priceId, subId: sub.id });
+    return;
+  }
 
   const interval: BillingInterval =
     plan.stripeYearlyPriceId === priceId ? "year" : "month";
 
-  // Resolve our user id — first try subscription metadata (set at Checkout),
+  // Resolve our user id — first from subscription metadata (set at Checkout),
   // then fall back to the Customer email.
   let userId = (sub.metadata && sub.metadata.userId) || null;
   if (!userId && typeof sub.customer === "string") {
@@ -158,60 +195,65 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
       if (u) userId = u.id;
     }
   }
-  if (!userId) return;
+  if (!userId) {
+    log("warn", "could not resolve user for subscription", { subId: sub.id });
+    return;
+  }
 
   const status = sub.status as SubscriptionStatus;
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
   const item = sub.items.data[0];
   const periodStart = new Date(item.current_period_start * 1000);
   const periodEnd = new Date(item.current_period_end * 1000);
-
-  const dbSub = await db.subscription.upsert({
-    where: { stripeSubscriptionId: sub.id },
-    update: {
-      status,
-      currentPeriodStart: periodStart,
-      currentPeriodEnd: periodEnd,
-      cancelAtPeriodEnd: sub.cancel_at_period_end,
-      endedAt: sub.ended_at ? new Date(sub.ended_at * 1000) : null,
-    },
-    create: {
-      userId,
-      planId: plan.id,
-      interval,
-      stripeSubscriptionId: sub.id,
-      stripeCustomerId: customerId,
-      stripePriceId: priceId,
-      status,
-      currentPeriodStart: periodStart,
-      currentPeriodEnd: periodEnd,
-      cancelAtPeriodEnd: sub.cancel_at_period_end,
-    },
-  });
-
-  // Entitlement keyed deterministically by subscription
-  const entId = `sub_${dbSub.id}`;
   const isActive = status === "active" || status === "trialing";
-  if (isActive) {
-    await db.entitlement.upsert({
-      where: { id: entId },
-      update: { expiresAt: periodEnd, creatorId: plan.creatorId },
+
+  await db.$transaction(async (tx) => {
+    const dbSub = await tx.subscription.upsert({
+      where: { stripeSubscriptionId: sub.id },
+      update: {
+        status,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
+        endedAt: sub.ended_at ? new Date(sub.ended_at * 1000) : null,
+      },
       create: {
-        id: entId,
         userId,
-        source: "subscription",
-        subscriptionId: dbSub.id,
-        creatorId: plan.creatorId,
-        expiresAt: periodEnd,
+        planId: plan.id,
+        interval,
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId: customerId,
+        stripePriceId: priceId,
+        status,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: sub.cancel_at_period_end,
       },
     });
-  } else {
-    // Past-due / unpaid / canceled — let entitlement expire at current period end
-    await db.entitlement.updateMany({
-      where: { id: entId },
-      data: { expiresAt: periodEnd },
-    });
-  }
+
+    // Entitlement keyed deterministically by subscription.
+    const entId = `sub_${dbSub.id}`;
+    if (isActive) {
+      await tx.entitlement.upsert({
+        where: { id: entId },
+        update: { expiresAt: periodEnd, creatorId: plan.creatorId },
+        create: {
+          id: entId,
+          userId,
+          source: "subscription",
+          subscriptionId: dbSub.id,
+          creatorId: plan.creatorId,
+          expiresAt: periodEnd,
+        },
+      });
+    } else {
+      // Past-due / unpaid / canceled — let entitlement lapse at period end.
+      await tx.entitlement.updateMany({
+        where: { id: entId },
+        data: { expiresAt: periodEnd },
+      });
+    }
+  });
 }
 
 async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
@@ -226,7 +268,7 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
       endedAt: sub.ended_at ? new Date(sub.ended_at * 1000) : new Date(),
     },
   });
-  // Keep entitlement active until current period end (already set on last update)
+  // Entitlement stays active until current period end (set on the last update).
 }
 
 async function handleInvoiceFailed(invoice: Stripe.Invoice) {
@@ -242,12 +284,88 @@ async function handleInvoiceFailed(invoice: Stripe.Invoice) {
   });
 }
 
+// ---------------------------------------------------------------- refunds & disputes
+
+async function handleChargeRefunded(charge: Stripe.Charge) {
+  // Only a FULL refund revokes access; a partial refund leaves it intact.
+  const amount = charge.amount ?? 0;
+  const refunded = charge.amount_refunded ?? 0;
+  if (amount <= 0 || refunded < amount) {
+    log("info", "charge.refunded (partial or zero) — no revocation", {
+      chargeId: charge.id,
+      amount,
+      refunded,
+    });
+    return;
+  }
+  const piId =
+    typeof charge.payment_intent === "string"
+      ? charge.payment_intent
+      : charge.payment_intent?.id;
+  if (!piId) return;
+  await revokeByPaymentIntent(piId, "refund");
+}
+
+async function handleDisputeCreated(dispute: Stripe.Dispute) {
+  const piId =
+    typeof dispute.payment_intent === "string"
+      ? dispute.payment_intent
+      : dispute.payment_intent?.id;
+  if (!piId) {
+    log("info", "dispute.created without payment_intent", { disputeId: dispute.id });
+    return;
+  }
+  await revokeByPaymentIntent(piId, "dispute");
+  // TODO(emails): notify the creator a dispute was opened (runbook Phase 4).
+}
+
+/**
+ * Revoke the entitlement granted by the purchase behind a PaymentIntent, by
+ * expiring it now. Idempotent — only touches still-active entitlements.
+ * (Subscription refunds/disputes are handled via the subscription lifecycle
+ * events; this targets one-time course purchases.)
+ */
+async function revokeByPaymentIntent(piId: string, reason: string) {
+  const purchase = await db.purchase.findUnique({
+    where: { stripePaymentIntentId: piId },
+  });
+  if (!purchase) {
+    log("info", "no local purchase for payment_intent; nothing to revoke", { piId, reason });
+    return;
+  }
+  const res = await db.entitlement.updateMany({
+    where: {
+      purchaseId: purchase.id,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    },
+    data: { expiresAt: new Date() },
+  });
+  log("info", "revoked purchase entitlement", {
+    reason,
+    purchaseId: purchase.id,
+    revoked: res.count,
+  });
+}
+
 // ---------------------------------------------------------------- account.updated
 
 async function handleAccountUpdated(account: Stripe.Account) {
   const onboarded = Boolean(account.details_submitted && account.charges_enabled);
+  const disabledReason = account.requirements?.disabled_reason ?? null;
+
+  // charges_enabled already drops to false when an account is restricted, so
+  // `onboarded` going false hides subscribe buttons on the storefront. We log
+  // the reason for operability; surfacing it in the UI needs a schema column
+  // (deferred — see runbook Phase 2.3).
   await db.creator.updateMany({
     where: { stripeAccountId: account.id },
     data: { stripeOnboarded: onboarded },
   });
+
+  if (!onboarded && disabledReason) {
+    log("warn", "connected account restricted", {
+      accountId: account.id,
+      disabledReason,
+    });
+  }
 }

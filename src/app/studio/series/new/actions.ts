@@ -6,6 +6,7 @@ import { z } from "zod";
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { slugify, ensureUniqueSlug } from "@/lib/slug";
+import { assertOwned } from "@/lib/ownership";
 
 const schema = z.object({
   title: z.string().min(1).max(200),
@@ -42,6 +43,9 @@ export async function createSeriesAction(formData: FormData) {
   const orderedClassIds = orderedAll.filter((id) => checked.has(id));
   const tagIds = formData.getAll("tagIds").map(String);
   const categoryIds = formData.getAll("categoryIds").map(String);
+  await assertOwned("tag", tagIds, creator.id);
+  await assertOwned("category", categoryIds, creator.id);
+  await assertOwned("class", orderedClassIds, creator.id);
 
   const series = await db.series.create({
     data: {

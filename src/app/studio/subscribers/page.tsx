@@ -64,7 +64,7 @@ export default async function SubscribersPage() {
                     </Td>
                     <Td>
                       <span className="tabular" style={{ color: "var(--ink)" }}>
-                        {price != null ? formatCents(price) : "—"}
+                        {price != null ? formatCents(price, s.plan.currency) : "—"}
                       </span>
                       <span className="ml-1.5 text-mono-sm" style={{ color: "var(--lichen)" }}>
                         /{s.interval === "year" ? "yr" : "mo"}

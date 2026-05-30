@@ -69,7 +69,7 @@ export function ClassFormFields({
         </Field>
       </div>
 
-      <Field label="Thumbnail URL" hint="Optional — auto-derived from YouTube">
+      <Field label="Thumbnail URL" hint="Optional — auto-derived from YouTube or Vimeo">
         <input
           name="thumbnailUrl"
           type="url"

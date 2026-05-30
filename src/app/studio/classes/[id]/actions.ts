@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { fetchVideoThumbnail } from "@/lib/video-thumbnail";
+import { assertOwned } from "@/lib/ownership";
 
 const schema = z.object({
   id: z.string().min(1),
@@ -43,7 +45,21 @@ export async function updateClassAction(formData: FormData) {
 
   const tagIds = formData.getAll("tagIds").map(String);
   const categoryIds = formData.getAll("categoryIds").map(String);
+  await assertOwned("tag", tagIds, creator.id);
+  await assertOwned("category", categoryIds, creator.id);
   const becomingPublished = parsed.published && !existing.published;
+
+  // Auto-fill the poster when the field is blank, or refresh a previously
+  // auto-derived poster when the video URL changed. A manually-entered
+  // thumbnail (one that differs from what we last stored) is always kept.
+  const urlChanged = parsed.videoUrl !== existing.videoUrl;
+  const usingStoredAuto =
+    !!parsed.thumbnailUrl && parsed.thumbnailUrl === existing.thumbnailUrl;
+  let thumbnailUrl = parsed.thumbnailUrl;
+  if (!thumbnailUrl || (urlChanged && usingStoredAuto)) {
+    const derived = await fetchVideoThumbnail(parsed.videoProvider, parsed.videoUrl);
+    thumbnailUrl = derived ?? thumbnailUrl ?? null;
+  }
 
   await db.class.update({
     where: { id: parsed.id },
@@ -51,7 +67,7 @@ export async function updateClassAction(formData: FormData) {
       title: parsed.title,
       videoProvider: parsed.videoProvider,
       videoUrl: parsed.videoUrl,
-      thumbnailUrl: parsed.thumbnailUrl,
+      thumbnailUrl,
       durationMins: parsed.durationMins ?? null,
       description: parsed.description,
       visibleToPublic: parsed.visibleToPublic,

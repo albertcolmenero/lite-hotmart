@@ -1,11 +1,13 @@
 import type { Category, Class, Tag } from "@prisma/client";
 import { Field, ToggleRow } from "@/components/studio-form";
+import { currencySymbol } from "@/lib/currency";
 
 export function CourseFormFields({
   classes,
   tags,
   categories,
   defaults,
+  currency = "usd",
 }: {
   classes: Class[];
   tags: Tag[];
@@ -22,6 +24,7 @@ export function CourseFormFields({
     tagIds?: string[];
     categoryIds?: string[];
   };
+  currency?: string;
 }) {
   const checkedTagIds = new Set(defaults?.tagIds ?? []);
   const checkedCategoryIds = new Set(defaults?.categoryIds ?? []);
@@ -71,12 +74,12 @@ export function CourseFormFields({
         />
       </Field>
 
-      <Field label="Price" hint="USD · one-time">
+      <Field label="Price" hint={`${currency.toUpperCase()} · one-time`}>
         <div
           className="input flex items-baseline"
           style={{ padding: "0.5rem 0.75rem" }}
         >
-          <span style={{ color: "var(--lichen)" }}>$</span>
+          <span style={{ color: "var(--lichen)" }}>{currencySymbol(currency)}</span>
           <input
             name="priceDollars"
             type="number"

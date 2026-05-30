@@ -6,6 +6,8 @@ import { z } from "zod";
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { slugify, ensureUniqueSlug } from "@/lib/slug";
+import { fetchVideoThumbnail } from "@/lib/video-thumbnail";
+import { assertOwned } from "@/lib/ownership";
 
 const schema = z.object({
   title: z.string().min(1).max(200),
@@ -47,6 +49,14 @@ export async function createClassAction(formData: FormData) {
 
   const tagIds = formData.getAll("tagIds").map(String);
   const categoryIds = formData.getAll("categoryIds").map(String);
+  await assertOwned("tag", tagIds, creator.id);
+  await assertOwned("category", categoryIds, creator.id);
+
+  // No manual thumbnail → derive one from the video (YouTube is instant;
+  // Vimeo hits oEmbed). Best-effort: stays null if the lookup fails.
+  const thumbnailUrl =
+    parsed.thumbnailUrl ??
+    (await fetchVideoThumbnail(parsed.videoProvider, parsed.videoUrl));
 
   const cls = await db.class.create({
     data: {
@@ -55,7 +65,7 @@ export async function createClassAction(formData: FormData) {
       slug,
       videoProvider: parsed.videoProvider,
       videoUrl: parsed.videoUrl,
-      thumbnailUrl: parsed.thumbnailUrl,
+      thumbnailUrl,
       durationMins: parsed.durationMins ?? null,
       description: parsed.description,
       visibleToPublic: parsed.visibleToPublic,

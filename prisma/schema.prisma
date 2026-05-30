@@ -43,6 +43,9 @@ model Creator {
   accentColor     String   @default("#6366f1")
   fontPair        String   @default("inter")
   themeId         String?
+  // Charge currency for this creator's plan + courses (usd | eur | mxn).
+  // Single source of truth; Plan.currency / Course.currency are kept in sync.
+  currency        String   @default("usd")
   // Stripe stays optional; not enforced anywhere yet.
   stripeAccountId String?  @unique
   stripeOnboarded Boolean  @default(false)

@@ -23,7 +23,12 @@ export default async function NewCoursePage() {
           <Link href="/studio/courses" className="btn-quiet">Cancel</Link>
         </div>
         <FormCard>
-          <CourseFormFields classes={classes} tags={tags} categories={categories} />
+          <CourseFormFields
+            classes={classes}
+            tags={tags}
+            categories={categories}
+            currency={creator.currency}
+          />
         </FormCard>
         <div className="flex items-center gap-3">
           <button type="submit" className="btn btn-primary">Save course</button>

@@ -7,6 +7,7 @@ import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { slugify, ensureUniqueSlug } from "@/lib/slug";
 import { syncCourseToStripe } from "@/lib/stripe-sync";
+import { assertOwned } from "@/lib/ownership";
 
 const schema = z.object({
   title: z.string().min(1).max(200),
@@ -45,6 +46,9 @@ export async function createCourseAction(formData: FormData) {
   const orderedClassIds = orderedAll.filter((id) => checked.has(id));
   const tagIds = formData.getAll("tagIds").map(String);
   const categoryIds = formData.getAll("categoryIds").map(String);
+  await assertOwned("tag", tagIds, creator.id);
+  await assertOwned("category", categoryIds, creator.id);
+  await assertOwned("class", orderedClassIds, creator.id);
 
   const course = await db.course.create({
     data: {
@@ -55,7 +59,7 @@ export async function createCourseAction(formData: FormData) {
       description: parsed.description,
       coverUrl: parsed.coverUrl,
       priceCents: Math.round(parsed.priceDollars * 100),
-      currency: "usd",
+      currency: creator.currency,
       visibleToPublic: parsed.visibleToPublic,
       published: parsed.published,
       publishedAt: parsed.published ? new Date() : null,

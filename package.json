@@ -21,7 +21,8 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "check:domain": "tsx scripts/check-domain.ts"
+    "check:domain": "tsx scripts/check-domain.ts",
+    "backfill:vimeo": "tsx scripts/backfill-vimeo-thumbnails.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
