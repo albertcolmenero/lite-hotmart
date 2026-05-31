@@ -18,7 +18,6 @@ export async function GET() {
     // mode (test vs live), or deleted. If we can't retrieve it under the key in
     // use now, drop it so onboarding self-heals instead of dead-ending on
     // accountLinks.create ("account not connected to your platform").
-    let recreating = false;
     if (accountId) {
       try {
         await stripe.accounts.retrieve(accountId);
@@ -28,7 +27,6 @@ export async function GET() {
           staleAccountId: accountId,
         });
         accountId = null;
-        recreating = true;
         await db.creator.update({
           where: { id: creator.id },
           data: { stripeAccountId: null, stripeOnboarded: false },
@@ -42,28 +40,27 @@ export async function GET() {
       // The creator fills this in during Express onboarding, and we can
       // patch it later via `accounts.update` once we know the real domain.
       const isPublicUrl = /^https?:\/\/(?!localhost)/.test(APP_URL);
-      const account = await stripe.accounts.create(
-        {
-          type: "express",
-          capabilities: {
-            card_payments: { requested: true },
-            transfers: { requested: true },
-          },
-          metadata: { creatorId: creator.id },
-          ...(isPublicUrl
-            ? {
-                business_profile: {
-                  name: creator.displayName,
-                  url: `${APP_URL}/${creator.slug}`,
-                },
-              }
-            : {}),
+      // No idempotency key here on purpose: this is an interactive flow whose
+      // params legitimately change between attempts (test/live, business_profile
+      // presence, profile edits). A static key poisons across attempts, and
+      // Stripe replays a prior failure for 24h. The `if (!accountId)` guard +
+      // the stale-id self-heal above are what prevent duplicate accounts.
+      const account = await stripe.accounts.create({
+        type: "express",
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
         },
-        // Stable key so a double-submit can't mint duplicate accounts. Skip it
-        // when recreating after a stale id so we always get a fresh account and
-        // never replay a since-deleted one via idempotency.
-        recreating ? {} : { idempotencyKey: `connect_acct_${creator.id}` },
-      );
+        metadata: { creatorId: creator.id },
+        ...(isPublicUrl
+          ? {
+              business_profile: {
+                name: creator.displayName,
+                url: `${APP_URL}/${creator.slug}`,
+              },
+            }
+          : {}),
+      });
       accountId = account.id;
       await db.creator.update({
         where: { id: creator.id },
