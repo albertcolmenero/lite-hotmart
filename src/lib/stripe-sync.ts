@@ -16,7 +16,7 @@
 import Stripe from "stripe";
 import { stripe } from "./stripe";
 import { db } from "./db";
-import type { Creator, Plan, Course } from "@prisma/client";
+import type { Creator, Plan, Course, PlanPrice } from "@prisma/client";
 
 type SyncResult = {
   productId: string | null;
@@ -37,11 +37,8 @@ export function creatorIsLive(creator: Creator): boolean {
 
 // ---------------------------------------------------------------- Plans
 
-export async function syncPlanToStripe(
-  creator: Creator,
-  plan: Plan,
-): Promise<SyncResult | null> {
-  if (!creatorIsLive(creator)) return null;
+export async function syncPlanToStripe(creator: Creator, plan: Plan): Promise<void> {
+  if (!creatorIsLive(creator)) return;
 
   // 1. Ensure Product exists
   let productId = plan.stripeProductId;
@@ -65,89 +62,67 @@ export async function syncPlanToStripe(
       .catch(() => undefined);
   }
 
-  // 2. Reconcile each interval's Price
-  const monthlyPriceId = await reconcilePrice({
-    creator,
-    productId,
-    existingPriceId: plan.stripeMonthlyPriceId,
-    amountCents: plan.monthlyPriceCents,
-    interval: "month",
-    currency: plan.currency,
-    trialDays: plan.trialDays,
-  });
-  const yearlyPriceId = await reconcilePrice({
-    creator,
-    productId,
-    existingPriceId: plan.stripeYearlyPriceId,
-    amountCents: plan.yearlyPriceCents,
-    interval: "year",
-    currency: plan.currency,
-    trialDays: plan.trialDays,
-  });
-
-  await db.plan.update({
-    where: { id: plan.id },
-    data: { stripeMonthlyPriceId: monthlyPriceId, stripeYearlyPriceId: yearlyPriceId },
-  });
-
-  return { productId, monthlyPriceId, yearlyPriceId };
+  // 2. Reconcile each cadence (PlanPrice) → one Stripe Price, storing its id.
+  const prices = await db.planPrice.findMany({ where: { planId: plan.id } });
+  for (const pp of prices) {
+    const stripePriceId = await reconcilePlanPrice(creator, productId, plan.currency, pp);
+    if (stripePriceId !== pp.stripePriceId) {
+      await db.planPrice.update({ where: { id: pp.id }, data: { stripePriceId } });
+    }
+  }
 }
 
-async function reconcilePrice(params: {
-  creator: Creator;
-  productId: string;
-  existingPriceId: string | null;
-  amountCents: number | null;
-  interval: "month" | "year";
-  currency: string;
-  trialDays: number;
-}): Promise<string | null> {
-  const { creator, productId, existingPriceId, amountCents, interval, currency } = params;
-
-  // Plan price unset → archive any existing Price, return null
-  if (amountCents == null || amountCents <= 0) {
-    if (existingPriceId) {
+async function reconcilePlanPrice(
+  creator: Creator,
+  productId: string,
+  currency: string,
+  pp: PlanPrice,
+): Promise<string | null> {
+  // Inactive / zero → archive any existing Price.
+  if (!pp.active || pp.priceCents <= 0) {
+    if (pp.stripePriceId) {
       await stripe.prices
-        .update(existingPriceId, { active: false }, reqOptions(creator))
+        .update(pp.stripePriceId, { active: false }, reqOptions(creator))
         .catch(() => undefined);
     }
     return null;
   }
 
-  // No prior Price → create
-  if (!existingPriceId) {
+  const recurring = {
+    interval: pp.interval as "month" | "year",
+    interval_count: pp.intervalCount,
+  };
+
+  // No prior Price → create.
+  if (!pp.stripePriceId) {
     const price = await stripe.prices.create(
-      {
-        product: productId,
-        unit_amount: amountCents,
-        currency,
-        recurring: { interval },
-      },
+      { product: productId, unit_amount: pp.priceCents, currency, recurring },
       reqOptions(creator),
     );
     return price.id;
   }
 
-  // Have prior Price — check if amount matches; if so reuse, otherwise archive + recreate
+  // Reuse if unchanged; else archive + recreate (grandfathers existing subs).
   const current = await stripe.prices
-    .retrieve(existingPriceId, undefined, reqOptions(creator))
+    .retrieve(pp.stripePriceId, undefined, reqOptions(creator))
     .catch(() => null);
-  if (current && current.active && current.unit_amount === amountCents && current.currency === currency) {
+  if (
+    current &&
+    current.active &&
+    current.unit_amount === pp.priceCents &&
+    current.currency === currency &&
+    current.recurring?.interval === pp.interval &&
+    current.recurring?.interval_count === pp.intervalCount
+  ) {
     return current.id;
   }
-  // archive the old one (preserves grandfathered subs)
   if (current) {
     await stripe.prices
-      .update(existingPriceId, { active: false }, reqOptions(creator))
+      .update(pp.stripePriceId, { active: false }, reqOptions(creator))
       .catch(() => undefined);
   }
   const price = await stripe.prices.create(
-    {
-      product: productId,
-      unit_amount: amountCents,
-      currency,
-      recurring: { interval },
-    },
+    { product: productId, unit_amount: pp.priceCents, currency, recurring },
     reqOptions(creator),
   );
   return price.id;
@@ -234,8 +209,10 @@ export async function syncCourseToStripe(
 export async function archiveStripePlan(creator: Creator, plan: Plan): Promise<void> {
   if (!creatorIsLive(creator)) return;
   const opts = reqOptions(creator);
-  for (const id of [plan.stripeMonthlyPriceId, plan.stripeYearlyPriceId]) {
-    if (id) await stripe.prices.update(id, { active: false }, opts).catch(() => undefined);
+  const prices = await db.planPrice.findMany({ where: { planId: plan.id } });
+  for (const pp of prices) {
+    if (pp.stripePriceId)
+      await stripe.prices.update(pp.stripePriceId, { active: false }, opts).catch(() => undefined);
   }
   if (plan.stripeProductId) {
     await stripe.products

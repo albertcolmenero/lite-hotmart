@@ -4,7 +4,7 @@ import { subscribeToCreatorAction } from "@/lib/payments";
 
 const schema = z.object({
   creatorId: z.string().min(1),
-  interval: z.enum(["month", "year"]),
+  planPriceId: z.string().min(1),
 });
 
 export async function POST(req: NextRequest) {

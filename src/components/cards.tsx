@@ -5,13 +5,14 @@ import Link from "next/link";
 import { Layers, Play, GraduationCap, Lock } from "lucide-react";
 import { youtubeThumbnail } from "./video-embed";
 import { formatCents } from "@/lib/utils";
-import { PaywallModal, type PaywallPlan } from "./paywall-modal";
+import { PaywallModal } from "./paywall-modal";
+import type { PlanDisplay } from "@/lib/plan-display";
 
 export type CardPaywall = {
   creatorId: string;
   creatorName: string;
   creatorAccent: string;
-  plan: PaywallPlan | null;
+  plan: PlanDisplay | null;
   signedIn: boolean;
 };
 

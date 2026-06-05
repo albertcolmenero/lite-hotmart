@@ -5,7 +5,7 @@ import { requireDbUser } from "./auth";
 import { BYPASS_PAYMENTS } from "./dev-auth";
 import { stripe, PLATFORM_FEE_BPS } from "./stripe";
 import { syncPlanToStripe, syncCourseToStripe, creatorIsLive } from "./stripe-sync";
-import type { BillingInterval } from "@prisma/client";
+import { cadenceMonths } from "./billing-cadences";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
@@ -39,22 +39,26 @@ export type PurchaseResult = {
  */
 export async function subscribeToCreatorAction(input: {
   creatorId: string;
-  interval: BillingInterval;
+  planPriceId: string;
 }): Promise<SubscribeResult> {
   const user = await requireDbUser();
-  const plan = await db.plan.findUnique({
-    where: { creatorId: input.creatorId },
-    include: { creator: true },
+  const planPrice = await db.planPrice.findUnique({
+    where: { id: input.planPriceId },
+    include: { plan: { include: { creator: true } } },
   });
-  if (!plan || !plan.active) throw new Error("This creator has no active plan.");
-  if (input.interval === "month" && !plan.monthlyPriceCents) {
-    throw new Error("Monthly plan unavailable.");
+  if (!planPrice || !planPrice.active || planPrice.priceCents <= 0) {
+    throw new Error("This billing option is unavailable.");
   }
-  if (input.interval === "year" && !plan.yearlyPriceCents) {
-    throw new Error("Yearly plan unavailable.");
+  const plan = planPrice.plan;
+  // Guard: the price must belong to the creator the caller named.
+  if (!plan.active || plan.creatorId !== input.creatorId) {
+    throw new Error("This creator has no active plan.");
   }
+  const creator = plan.creator;
+  // Stripe enum is the base interval; the full cadence lives on planPrice.
+  const baseInterval = planPrice.interval === "year" ? "year" : "month";
 
-  const useStripe = !BYPASS_PAYMENTS && creatorIsLive(plan.creator);
+  const useStripe = !BYPASS_PAYMENTS && creatorIsLive(creator);
 
   // ────────────────────────────── Bypass path
   if (!useStripe) {
@@ -70,14 +74,16 @@ export async function subscribeToCreatorAction(input: {
 
     const now = new Date();
     const periodEnd = new Date(now);
-    if (input.interval === "month") periodEnd.setMonth(periodEnd.getMonth() + 1);
-    else periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+    periodEnd.setMonth(
+      periodEnd.getMonth() + cadenceMonths(planPrice.interval, planPrice.intervalCount),
+    );
 
     const sub = await db.subscription.create({
       data: {
         userId: user.id,
         planId: plan.id,
-        interval: input.interval,
+        planPriceId: planPrice.id,
+        interval: baseInterval,
         status: "active",
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd,
@@ -98,13 +104,12 @@ export async function subscribeToCreatorAction(input: {
   }
 
   // ────────────────────────────── Stripe Checkout path
-  // Make sure Plan has up-to-date Stripe Prices on the connected account.
-  const syncResult = await syncPlanToStripe(plan.creator, plan);
-  const priceId =
-    input.interval === "month"
-      ? syncResult?.monthlyPriceId ?? plan.stripeMonthlyPriceId
-      : syncResult?.yearlyPriceId ?? plan.stripeYearlyPriceId;
-  if (!priceId) throw new Error("Stripe price not configured for this interval.");
+  // Make sure the Plan's Prices exist on the connected account, then read back
+  // the Stripe Price id for this cadence.
+  await syncPlanToStripe(creator, plan);
+  const fresh = await db.planPrice.findUnique({ where: { id: planPrice.id } });
+  const priceId = fresh?.stripePriceId;
+  if (!priceId) throw new Error("Stripe price not configured for this billing option.");
 
   const session = await stripe.checkout.sessions.create(
     {
@@ -118,7 +123,7 @@ export async function subscribeToCreatorAction(input: {
           userId: user.id,
           creatorId: plan.creatorId,
           planId: plan.id,
-          interval: input.interval,
+          planPriceId: planPrice.id,
         },
       },
       metadata: {
@@ -126,14 +131,14 @@ export async function subscribeToCreatorAction(input: {
         userId: user.id,
         creatorId: plan.creatorId,
         planId: plan.id,
-        interval: input.interval,
+        planPriceId: planPrice.id,
       },
-      success_url: `${APP_URL}/library/${plan.creator.slug}?subscribed=1`,
-      cancel_url: `${APP_URL}/${plan.creator.slug}`,
+      success_url: `${APP_URL}/library/${creator.slug}?subscribed=1`,
+      cancel_url: `${APP_URL}/${creator.slug}`,
     },
     {
-      stripeAccount: plan.creator.stripeAccountId!,
-      idempotencyKey: `sub_${user.id}_${plan.id}_${input.interval}_${dayBucket()}`,
+      stripeAccount: creator.stripeAccountId!,
+      idempotencyKey: `sub_${user.id}_${planPrice.id}_${dayBucket()}`,
     },
   );
 

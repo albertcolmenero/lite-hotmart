@@ -1,6 +1,7 @@
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatCents } from "@/lib/utils";
+import { shortCadence } from "@/lib/plan-display";
 import { EmptyState } from "@/components/empty-state";
 import { EnvelopeOpen } from "@/components/illustrations";
 
@@ -8,7 +9,7 @@ export default async function SubscribersPage() {
   const creator = (await getCreatorForCurrentUser())!;
   const subs = await db.subscription.findMany({
     where: { plan: { creatorId: creator.id } },
-    include: { user: true, plan: true },
+    include: { user: true, plan: true, planPrice: true },
     orderBy: { createdAt: "desc" },
   });
 
@@ -47,7 +48,13 @@ export default async function SubscribersPage() {
             <tbody>
               {subs.map((s, i) => {
                 const price =
-                  s.interval === "year" ? s.plan.yearlyPriceCents : s.plan.monthlyPriceCents;
+                  s.planPrice?.priceCents ??
+                  (s.interval === "year" ? s.plan.yearlyPriceCents : s.plan.monthlyPriceCents);
+                const cadence = s.planPrice
+                  ? shortCadence(s.planPrice.interval, s.planPrice.intervalCount)
+                  : s.interval === "year"
+                    ? "/yr"
+                    : "/mo";
                 const isActive = s.status === "active" || s.status === "trialing";
                 return (
                   <tr
@@ -67,7 +74,7 @@ export default async function SubscribersPage() {
                         {price != null ? formatCents(price, s.plan.currency) : "—"}
                       </span>
                       <span className="ml-1.5 text-mono-sm" style={{ color: "var(--lichen)" }}>
-                        /{s.interval === "year" ? "yr" : "mo"}
+                        {cadence}
                       </span>
                     </Td>
                     <Td>

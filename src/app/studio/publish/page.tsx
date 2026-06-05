@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatCents } from "@/lib/utils";
+import { toPlanDisplay } from "@/lib/plan-display";
 import { publishCreatorAction, unpublishCreatorAction } from "./actions";
 import { PublishCelebration } from "./_celebration";
 
@@ -11,13 +12,14 @@ export default async function PublishPage() {
   const creator = (await getCreatorForCurrentUser())!;
 
   const [plan, classCount, seriesCount, courseCount] = await Promise.all([
-    db.plan.findUnique({ where: { creatorId: creator.id } }),
+    db.plan.findUnique({ where: { creatorId: creator.id }, include: { prices: true } }),
     db.class.count({ where: { creatorId: creator.id, published: true } }),
     db.series.count({ where: { creatorId: creator.id, published: true } }),
     db.course.count({ where: { creatorId: creator.id, published: true } }),
   ]);
 
-  const planSet = Boolean(plan && (plan.monthlyPriceCents != null || plan.yearlyPriceCents != null));
+  const planDisplay = toPlanDisplay(plan);
+  const planSet = Boolean(planDisplay && planDisplay.options.length > 0);
   const hasContent = classCount + seriesCount + courseCount > 0;
 
   return (
@@ -67,9 +69,11 @@ export default async function PublishPage() {
         optional
         title="Subscription plan"
         body={
-          plan && planSet
-            ? `Monthly ${plan.monthlyPriceCents != null ? formatCents(plan.monthlyPriceCents, plan.currency) : "—"} · Yearly ${plan.yearlyPriceCents != null ? formatCents(plan.yearlyPriceCents, plan.currency) : "—"}`
-            : "Set monthly and/or yearly pricing."
+          planDisplay && planSet
+            ? planDisplay.options
+                .map((o) => `${o.label} ${formatCents(o.priceCents, planDisplay.currency)}`)
+                .join(" · ")
+            : "Set a price for at least one billing cadence."
         }
         cta={{ label: "Manage plan", href: "/studio/plan" }}
       />

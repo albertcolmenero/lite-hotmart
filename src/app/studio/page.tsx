@@ -3,6 +3,8 @@ import { ArrowUpRight } from "lucide-react";
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatCents } from "@/lib/utils";
+import { cadenceMonths } from "@/lib/billing-cadences";
+import { toPlanDisplay } from "@/lib/plan-display";
 
 export default async function StudioOverviewPage() {
   const creator = (await getCreatorForCurrentUser())!;
@@ -11,10 +13,10 @@ export default async function StudioOverviewPage() {
     db.class.count({ where: { creatorId: creator.id, published: true } }),
     db.series.count({ where: { creatorId: creator.id, published: true } }),
     db.course.count({ where: { creatorId: creator.id, published: true } }),
-    db.plan.findUnique({ where: { creatorId: creator.id } }),
+    db.plan.findUnique({ where: { creatorId: creator.id }, include: { prices: true } }),
     db.subscription.findMany({
       where: { plan: { creatorId: creator.id }, status: { in: ["active", "trialing"] } },
-      include: { plan: true },
+      include: { plan: true, planPrice: true },
     }),
     db.subscription.findMany({
       where: { plan: { creatorId: creator.id } },
@@ -31,10 +33,15 @@ export default async function StudioOverviewPage() {
   ]);
 
   const mrrCents = activeSubs.reduce((acc, s) => {
+    const pp = s.planPrice;
+    if (pp) return acc + pp.priceCents / cadenceMonths(pp.interval, pp.intervalCount);
     if (s.interval === "year" && s.plan.yearlyPriceCents) return acc + s.plan.yearlyPriceCents / 12;
     if (s.interval === "month" && s.plan.monthlyPriceCents) return acc + s.plan.monthlyPriceCents;
     return acc;
   }, 0);
+
+  const planDisplay = toPlanDisplay(plan);
+  const cheapest = planDisplay?.options[0];
 
   return (
     <div className="space-y-10">
@@ -59,14 +66,14 @@ export default async function StudioOverviewPage() {
         <Stat
           label="Plan"
           value={
-            plan && plan.active && plan.monthlyPriceCents != null
-              ? formatCents(plan.monthlyPriceCents, plan.currency)
+            plan?.active && cheapest && planDisplay
+              ? formatCents(cheapest.priceCents, planDisplay.currency)
               : "—"
           }
           hint={
-            plan && plan.yearlyPriceCents != null
-              ? `or ${formatCents(plan.yearlyPriceCents, plan.currency)}/yr`
-              : "monthly"
+            planDisplay && planDisplay.options.length > 1
+              ? `${planDisplay.options.length} cadences`
+              : cheapest?.note ?? "monthly"
           }
         />
       </div>

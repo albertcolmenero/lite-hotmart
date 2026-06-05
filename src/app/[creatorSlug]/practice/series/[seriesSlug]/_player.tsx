@@ -4,10 +4,8 @@ import { useState } from "react";
 import { Lock, Play } from "lucide-react";
 import type { VideoProvider } from "@prisma/client";
 import { VideoEmbed, youtubeThumbnail } from "@/components/video-embed";
-import {
-  PaywallModal,
-  type PaywallPlan,
-} from "@/components/paywall-modal";
+import { PaywallModal } from "@/components/paywall-modal";
+import type { PlanDisplay } from "@/lib/plan-display";
 
 export type SeriesClassRow = {
   id: string;
@@ -24,7 +22,7 @@ export type SeriesPlayerPaywall = {
   creatorId: string;
   creatorName: string;
   creatorAccent: string;
-  plan: PaywallPlan | null;
+  plan: PlanDisplay | null;
   signedIn: boolean;
 };
 

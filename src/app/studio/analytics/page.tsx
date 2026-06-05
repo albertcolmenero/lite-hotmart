@@ -1,6 +1,7 @@
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatCents } from "@/lib/utils";
+import { cadenceMonths } from "@/lib/billing-cadences";
 import { Sparkline, RetentionRing } from "@/components/sparkline";
 import { EmptyState } from "@/components/empty-state";
 import { BarsRising } from "@/components/illustrations";
@@ -11,7 +12,7 @@ export default async function AnalyticsPage() {
   const [subs, purchases] = await Promise.all([
     db.subscription.findMany({
       where: { plan: { creatorId: creator.id } },
-      include: { plan: true },
+      include: { plan: true, planPrice: true },
       orderBy: { createdAt: "asc" },
     }),
     db.purchase.findMany({
@@ -36,6 +37,8 @@ export default async function AnalyticsPage() {
       const end = s.endedAt ? dayStart(s.endedAt) : null;
       const active = start <= d && (end == null || end > d);
       if (!active) return acc;
+      const pp = s.planPrice;
+      if (pp) return acc + pp.priceCents / cadenceMonths(pp.interval, pp.intervalCount);
       if (s.interval === "year" && s.plan.yearlyPriceCents) return acc + s.plan.yearlyPriceCents / 12;
       if (s.interval === "month" && s.plan.monthlyPriceCents) return acc + s.plan.monthlyPriceCents;
       return acc;

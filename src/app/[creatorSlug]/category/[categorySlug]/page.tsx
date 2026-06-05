@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { getOrCreateDbUser } from "@/lib/auth";
 import { hasActiveSubscription } from "@/lib/entitlements";
+import { toPlanDisplay } from "@/lib/plan-display";
 import { ClassCard, SeriesCard, CourseCard } from "@/components/cards";
 
 export default async function CategoryPage({
@@ -12,7 +13,7 @@ export default async function CategoryPage({
   const { creatorSlug, categorySlug } = await params;
   const creator = await db.creator.findUnique({
     where: { slug: creatorSlug },
-    include: { plan: true },
+    include: { plan: { include: { prices: true } } },
   });
   if (!creator) notFound();
 
@@ -32,13 +33,7 @@ export default async function CategoryPage({
     creatorId: creator.id,
     creatorName: creator.displayName,
     creatorAccent: creator.accentColor,
-    plan: creator.plan
-      ? {
-          monthlyPriceCents: creator.plan.monthlyPriceCents,
-          yearlyPriceCents: creator.plan.yearlyPriceCents,
-          currency: creator.plan.currency,
-        }
-      : null,
+    plan: toPlanDisplay(creator.plan),
     signedIn: Boolean(viewer),
   };
 

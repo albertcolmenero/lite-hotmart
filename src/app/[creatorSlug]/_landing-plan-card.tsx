@@ -4,15 +4,12 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatCents } from "@/lib/utils";
+import { type PlanDisplay, savingsVsMonthly } from "@/lib/plan-display";
 
 export type LandingPlanCardProps = {
   creatorId: string;
   accentColor: string;
-  plan: {
-    monthlyPriceCents: number | null;
-    yearlyPriceCents: number | null;
-    currency: string;
-  };
+  plan: PlanDisplay;
   signedIn: boolean;
   /** When true the creator has connected Stripe (or bypass is in effect). When false,
    * paid prices render but the action buttons are disabled with a "coming soon" hint. */
@@ -30,13 +27,12 @@ export function LandingPlanCard({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  let savings: number | null = null;
-  if (plan.monthlyPriceCents && plan.yearlyPriceCents) {
-    const annualIfMonthly = plan.monthlyPriceCents * 12;
-    savings = Math.round(((annualIfMonthly - plan.yearlyPriceCents) / annualIfMonthly) * 100);
-  }
+  const bestSavings = plan.options.reduce<number | null>((best, o) => {
+    const s = savingsVsMonthly(plan.options, o);
+    return s != null && (best == null || s > best) ? s : best;
+  }, null);
 
-  const handle = (interval: "month" | "year") => {
+  const handle = (planPriceId: string) => {
     if (!signedIn) {
       router.push("/sign-in");
       return;
@@ -47,7 +43,7 @@ export function LandingPlanCard({
         const res = await fetch("/api/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ creatorId, interval }),
+          body: JSON.stringify({ creatorId, planPriceId }),
         });
         const j = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(j?.error || "Subscribe failed");
@@ -72,36 +68,32 @@ export function LandingPlanCard({
         }}
       >
         <div className="text-label">Choose your plan</div>
-        {savings != null && savings > 0 ? (
-          <span className="chip chip--accent">Save {savings}% yearly</span>
+        {bestSavings != null ? (
+          <span className="chip chip--accent">Save up to {bestSavings}%</span>
         ) : null}
       </div>
 
       <div className="p-5 space-y-2.5">
-        {plan.monthlyPriceCents != null ? (
-          <PlanRow
-            pending={pending}
-            disabled={!billingReady}
-            label="Monthly"
-            sublabel="Cancel anytime"
-            price={formatCents(plan.monthlyPriceCents, plan.currency)}
-            cadence="per month"
-            onClick={() => handle("month")}
-          />
-        ) : null}
-        {plan.yearlyPriceCents != null ? (
-          <PlanRow
-            pending={pending}
-            disabled={!billingReady}
-            label="Yearly"
-            sublabel={savings != null && savings > 0 ? `${savings}% off vs monthly` : "Best for daily practice"}
-            price={formatCents(plan.yearlyPriceCents, plan.currency)}
-            cadence="per year"
-            onClick={() => handle("year")}
-            accent={accentColor}
-            featured
-          />
-        ) : null}
+        {plan.options.map((opt, i) => {
+          const sv = savingsVsMonthly(plan.options, opt);
+          const featured = plan.options.length > 1 && i === plan.options.length - 1;
+          return (
+            <PlanRow
+              key={opt.planPriceId}
+              pending={pending}
+              disabled={!billingReady}
+              label={opt.label}
+              sublabel={
+                sv ? `${sv}% off vs monthly` : opt.months === 1 ? "Cancel anytime" : "Best value"
+              }
+              price={formatCents(opt.priceCents, plan.currency)}
+              cadence={opt.note}
+              onClick={() => handle(opt.planPriceId)}
+              accent={featured ? accentColor : undefined}
+              featured={featured}
+            />
+          );
+        })}
 
         {!billingReady ? (
           <p

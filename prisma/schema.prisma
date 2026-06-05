@@ -83,12 +83,36 @@ model Plan {
   active                Boolean  @default(true)
   // Stripe wiring (on the connected account)
   stripeProductId       String?
+  // Legacy two-cadence columns. Superseded by PlanPrice rows (kept for backfill
+  // + safety; no longer read/written by app code). Drop in a later cleanup.
   stripeMonthlyPriceId  String?
   stripeYearlyPriceId   String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
+  prices        PlanPrice[]
   subscriptions Subscription[]
+}
+
+/// One billing cadence offered on a Plan, mapping 1:1 to a Stripe Price.
+/// e.g. { interval: "month", intervalCount: 6 } = every 6 months.
+model PlanPrice {
+  id            String   @id @default(cuid())
+  planId        String
+  plan          Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  interval      String   // Stripe base interval: "month" | "year"
+  intervalCount Int      @default(1)
+  priceCents    Int
+  // Stripe Price id on the connected account (recurring interval + interval_count).
+  stripePriceId String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@unique([planId, interval, intervalCount])
+  @@index([planId])
 }
 
 enum VideoProvider {
@@ -301,6 +325,10 @@ model Subscription {
   user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   planId               String
   plan                 Plan               @relation(fields: [planId], references: [id])
+  planPriceId          String?
+  planPrice            PlanPrice?         @relation(fields: [planPriceId], references: [id])
+  // Stripe base interval of the cadence (kept for back-compat + MRR fallback);
+  // the full cadence (incl. interval_count) lives on planPrice.
   interval             BillingInterval
   // Stripe stays optional — bypass path can create local-only subscriptions.
   stripeSubscriptionId String?            @unique

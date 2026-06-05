@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { PaywallModal, type PaywallPlan } from "@/components/paywall-modal";
+import { PaywallModal } from "@/components/paywall-modal";
+import type { PlanDisplay } from "@/lib/plan-display";
 import { formatCents } from "@/lib/utils";
 
 export function BuyCourseButton({
@@ -20,7 +21,7 @@ export function BuyCourseButton({
   subscribed: boolean;
   signedIn: boolean;
   creator: { id: string; displayName: string; accentColor: string };
-  plan: PaywallPlan | null;
+  plan: PlanDisplay | null;
 }) {
   const router = useRouter();
   const [paywallOpen, setPaywallOpen] = useState(false);

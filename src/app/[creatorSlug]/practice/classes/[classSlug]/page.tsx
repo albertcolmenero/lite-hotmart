@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { getOrCreateDbUser } from "@/lib/auth";
 import { canPlayClass } from "@/lib/entitlements";
+import { toPlanDisplay } from "@/lib/plan-display";
 import { VideoEmbed, youtubeThumbnail } from "@/components/video-embed";
 import { StartButton } from "@/components/start-button";
 
@@ -13,7 +14,7 @@ export default async function ClassDetailPage({
   const { creatorSlug, classSlug } = await params;
   const creator = await db.creator.findUnique({
     where: { slug: creatorSlug },
-    include: { plan: true },
+    include: { plan: { include: { prices: true } } },
   });
   if (!creator) notFound();
 
@@ -113,15 +114,7 @@ export default async function ClassDetailPage({
           allowed={access.allowed}
           signedIn={Boolean(viewer)}
           creator={{ id: creator.id, displayName: creator.displayName, accentColor: creator.accentColor }}
-          plan={
-            creator.plan
-              ? {
-                  monthlyPriceCents: creator.plan.monthlyPriceCents,
-                  yearlyPriceCents: creator.plan.yearlyPriceCents,
-                  currency: creator.plan.currency,
-                }
-              : null
-          }
+          plan={toPlanDisplay(creator.plan)}
           label={access.allowed ? "Start class" : "Unlock to start"}
         />
       </div>

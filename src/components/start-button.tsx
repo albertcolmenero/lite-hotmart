@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PaywallModal, type PaywallPlan } from "./paywall-modal";
+import { PaywallModal } from "./paywall-modal";
+import type { PlanDisplay } from "@/lib/plan-display";
 
 export function StartButton({
   allowed,
@@ -19,7 +20,7 @@ export function StartButton({
   label?: string;
   className?: string;
   creator: { id: string; displayName: string; accentColor: string };
-  plan: PaywallPlan | null;
+  plan: PlanDisplay | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);

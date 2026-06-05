@@ -4,8 +4,11 @@ import { db } from "@/lib/db";
 import { getOrCreateDbUser } from "@/lib/auth";
 import { hasActiveSubscription } from "@/lib/entitlements";
 import { LandingPlanCard, type LandingPlanCardProps } from "./_landing-plan-card";
+import { toPlanDisplay } from "@/lib/plan-display";
 import { BYPASS_PAYMENTS } from "@/lib/dev-auth";
 import { ClassCard, SeriesCard, CourseCard } from "@/components/cards";
+import { HomeContent } from "@/components/home-content-renderer";
+import { isHomeDocEmpty, type HomeDoc } from "@/lib/home-content";
 
 export default async function CreatorLanding({
   params,
@@ -15,7 +18,7 @@ export default async function CreatorLanding({
   const { creatorSlug } = await params;
   const creator = await db.creator.findUnique({
     where: { slug: creatorSlug },
-    include: { plan: true },
+    include: { plan: { include: { prices: true } } },
   });
   if (!creator) notFound();
 
@@ -66,17 +69,12 @@ export default async function CreatorLanding({
     }),
   ]);
 
+  const planDisplay = toPlanDisplay(creator.plan);
   const paywall = {
     creatorId: creator.id,
     creatorName: creator.displayName,
     creatorAccent: creator.accentColor,
-    plan: creator.plan
-      ? {
-          monthlyPriceCents: creator.plan.monthlyPriceCents,
-          yearlyPriceCents: creator.plan.yearlyPriceCents,
-          currency: creator.plan.currency,
-        }
-      : null,
+    plan: planDisplay,
     signedIn: Boolean(viewer),
   };
 
@@ -89,24 +87,23 @@ export default async function CreatorLanding({
     classes.length === 0 && seriesList.length === 0 && courses.length === 0;
 
   const membershipProps: LandingPlanCardProps | null =
-    !subscribed && creator.plan && creator.plan.active
+    !subscribed && creator.plan?.active && planDisplay && planDisplay.options.length > 0
       ? {
           creatorId: creator.id,
           accentColor: creator.accentColor,
-          plan: {
-            monthlyPriceCents: creator.plan.monthlyPriceCents,
-            yearlyPriceCents: creator.plan.yearlyPriceCents,
-            currency: creator.plan.currency,
-          },
+          plan: planDisplay,
           signedIn: Boolean(viewer),
           billingReady,
         }
       : null;
 
+  const homeDoc = creator.homeContent as HomeDoc | null;
+  const showHomeContent = homeDoc != null && !isHomeDocEmpty(homeDoc);
+
   return (
     <div>
-      {/* hero — bio shown as a simple intro paragraph */}
-      {creator.bio ? (
+      {/* hero — rich home content when set, else the plain bio as a fallback */}
+      {showHomeContent || creator.bio ? (
         <section className="max-w-[760px] mx-auto px-6 pt-16 pb-12">
           <h1
             className="text-h1"
@@ -114,12 +111,18 @@ export default async function CreatorLanding({
           >
             {creator.displayName}
           </h1>
-          <p
-            className="mt-4 whitespace-pre-wrap"
-            style={{ color: "var(--lichen)", lineHeight: 1.6, fontSize: "1.0625rem" }}
-          >
-            {creator.bio}
-          </p>
+          {showHomeContent ? (
+            <div className="mt-4">
+              <HomeContent doc={homeDoc!} />
+            </div>
+          ) : (
+            <p
+              className="mt-4 whitespace-pre-wrap"
+              style={{ color: "var(--lichen)", lineHeight: 1.6, fontSize: "1.0625rem" }}
+            >
+              {creator.bio}
+            </p>
+          )}
         </section>
       ) : null}
 

@@ -2,6 +2,8 @@ import { getCreatorForCurrentUser } from "@/lib/auth";
 import { FormCard, Field } from "@/components/studio-form";
 import { ThemeTile } from "@/components/theme-tile";
 import { STOREFRONT_THEMES, DEFAULT_THEME_ID } from "@/lib/themes";
+import type { HomeDoc } from "@/lib/home-content";
+import { HomeContentEditor } from "./_home-content-editor";
 import { updateBrandingAction } from "./actions";
 
 export default async function BrandingPage() {
@@ -26,13 +28,10 @@ export default async function BrandingPage() {
               style={{ fontSize: "1.0625rem", fontWeight: 500 }}
             />
           </Field>
-          <Field label="Bio" hint="One sentence works best">
-            <textarea
-              name="bio"
-              defaultValue={creator.bio ?? ""}
-              rows={3}
-              className="textarea"
-              style={{ resize: "vertical" }}
+          <Field label="Home page" hint="Shown at the top of your storefront">
+            <HomeContentEditor
+              initialContent={creator.homeContent as HomeDoc | null}
+              fallbackBio={creator.bio}
             />
           </Field>
           <Field label="Logo URL" hint="Shown in the top menu (left). Leave blank for none.">

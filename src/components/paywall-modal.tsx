@@ -5,12 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Lock, Sparkles, Smartphone, X } from "lucide-react";
 import { formatCents } from "@/lib/utils";
-
-export type PaywallPlan = {
-  monthlyPriceCents: number | null;
-  yearlyPriceCents: number | null;
-  currency: string;
-};
+import { type PlanDisplay, savingsVsMonthly } from "@/lib/plan-display";
 
 export type PaywallProps = {
   open: boolean;
@@ -18,7 +13,7 @@ export type PaywallProps = {
   creatorId: string;
   creatorName: string;
   creatorAccent: string;
-  plan: PaywallPlan | null;
+  plan: PlanDisplay | null;
   signedIn: boolean;
 };
 
@@ -51,14 +46,14 @@ export function PaywallModal({
 
   if (!open) return null;
 
-  const handleSubscribe = (interval: "month" | "year") => {
+  const handleSubscribe = (planPriceId: string) => {
     setError(null);
     startTransition(async () => {
       try {
         const res = await fetch("/api/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ creatorId, interval }),
+          body: JSON.stringify({ creatorId, planPriceId }),
         });
         const j = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(j?.error || "Subscribe failed");
@@ -73,12 +68,6 @@ export function PaywallModal({
       }
     });
   };
-
-  let savings: number | null = null;
-  if (plan?.monthlyPriceCents && plan?.yearlyPriceCents) {
-    const annualIfMonthly = plan.monthlyPriceCents * 12;
-    savings = Math.round(((annualIfMonthly - plan.yearlyPriceCents) / annualIfMonthly) * 100);
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4 paywall-root">
@@ -156,31 +145,28 @@ export function PaywallModal({
             />
           </ul>
 
-          {plan ? (
+          {plan && plan.options.length > 0 ? (
             <div className="mt-6">
               <div className="text-label">Choose your plan</div>
               <div className="mt-2 space-y-2">
-                {plan.monthlyPriceCents != null ? (
-                  <PlanButton
-                    pending={pending}
-                    label="Monthly"
-                    sublabel="Cancel anytime"
-                    price={formatCents(plan.monthlyPriceCents, plan.currency)}
-                    cadence="/mo"
-                    onClick={() => handleSubscribe("month")}
-                  />
-                ) : null}
-                {plan.yearlyPriceCents != null ? (
-                  <PlanButton
-                    pending={pending}
-                    label="Yearly"
-                    sublabel={savings != null && savings > 0 ? `Save ${savings}%` : "Best value"}
-                    price={formatCents(plan.yearlyPriceCents, plan.currency)}
-                    cadence="/yr"
-                    onClick={() => handleSubscribe("year")}
-                    featured
-                  />
-                ) : null}
+                {plan.options.map((opt, i) => {
+                  const sv = savingsVsMonthly(plan.options, opt);
+                  const featured = plan.options.length > 1 && i === plan.options.length - 1;
+                  return (
+                    <PlanButton
+                      key={opt.planPriceId}
+                      pending={pending}
+                      label={opt.label}
+                      sublabel={
+                        sv ? `Save ${sv}%` : opt.months === 1 ? "Cancel anytime" : "Best value"
+                      }
+                      price={formatCents(opt.priceCents, plan.currency)}
+                      cadence={opt.shortCadence}
+                      onClick={() => handleSubscribe(opt.planPriceId)}
+                      featured={featured}
+                    />
+                  );
+                })}
               </div>
             </div>
           ) : (

@@ -37,6 +37,7 @@ const checkoutMetaSchema = z.object({
   userId: z.string().min(1),
   creatorId: z.string().min(1),
   planId: z.string().optional(),
+  planPriceId: z.string().optional(),
   interval: z.enum(["month", "year"]).optional(),
   courseId: z.string().optional(),
 });
@@ -172,20 +173,17 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
   const priceId = sub.items.data[0]?.price.id;
   if (!priceId) return;
 
-  // Find the local Plan by either monthly or yearly price id.
-  const plan = await db.plan.findFirst({
-    where: {
-      OR: [{ stripeMonthlyPriceId: priceId }, { stripeYearlyPriceId: priceId }],
-    },
-    include: { creator: true },
+  // Resolve the cadence (PlanPrice) by its Stripe Price id → its Plan + creator.
+  const planPrice = await db.planPrice.findFirst({
+    where: { stripePriceId: priceId },
+    include: { plan: { include: { creator: true } } },
   });
-  if (!plan) {
+  if (!planPrice) {
     log("warn", "subscription event for unknown price", { priceId, subId: sub.id });
     return;
   }
-
-  const interval: BillingInterval =
-    plan.stripeYearlyPriceId === priceId ? "year" : "month";
+  const plan = planPrice.plan;
+  const interval: BillingInterval = planPrice.interval === "year" ? "year" : "month";
 
   // Resolve our user id — first from subscription metadata (set at Checkout),
   // then fall back to the Customer email.
@@ -216,6 +214,9 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
       where: { stripeSubscriptionId: sub.id },
       update: {
         status,
+        planPriceId: planPrice.id,
+        interval,
+        stripePriceId: priceId,
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
         cancelAtPeriodEnd: sub.cancel_at_period_end,
@@ -224,6 +225,7 @@ async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
       create: {
         userId,
         planId: plan.id,
+        planPriceId: planPrice.id,
         interval,
         stripeSubscriptionId: sub.id,
         stripeCustomerId: customerId,
