@@ -49,6 +49,10 @@ model Creator {
   // Stripe stays optional; not enforced anywhere yet.
   stripeAccountId String?  @unique
   stripeOnboarded Boolean  @default(false)
+  // Connect via OAuth (Standard accounts): the connected account keeps its own
+  // country, and we verify a single-use CSRF nonce across the OAuth round-trip.
+  stripeAccountCountry String?
+  stripeOAuthState     String?
   published       Boolean  @default(false)
   publishedAt     DateTime?
   // Custom domain (V4) — creator-owned host like "studio.example.com"

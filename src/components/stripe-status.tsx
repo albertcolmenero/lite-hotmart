@@ -15,7 +15,11 @@ export function StripeStatusCard({
   creator,
   showTitle = true,
 }: {
-  creator: { stripeAccountId: string | null; stripeOnboarded: boolean };
+  creator: {
+    stripeAccountId: string | null;
+    stripeOnboarded: boolean;
+    stripeAccountCountry?: string | null;
+  };
   showTitle?: boolean;
 }) {
   const status = getStripeStatus(creator);
@@ -27,7 +31,8 @@ export function StripeStatusCard({
         <header>
           <h2 className="text-h3">Payouts</h2>
           <p className="mt-1 text-sm" style={{ color: "var(--lichen)" }}>
-            Connect Stripe to start collecting subscription and course payments.
+            Connect your existing Stripe account to start collecting subscription
+            and course payments.
           </p>
         </header>
       ) : null}
@@ -42,13 +47,15 @@ export function StripeStatusCard({
         >
           <Pill color="var(--amber)" label="Not connected" />
           <div className="flex-1 text-sm" style={{ color: "var(--ink)" }}>
-            Until you connect Stripe, subscribe buttons are hidden on your storefront.
+            Until you connect your Stripe account, subscribe buttons are hidden on
+            your storefront. You&apos;ll sign in to Stripe and pick your existing
+            account — no new account needed.
           </div>
           <Link
             href="/api/stripe/connect/onboard"
             className="btn btn-primary shrink-0"
           >
-            Connect Stripe
+            Connect your Stripe account
           </Link>
         </div>
       ) : null}
@@ -83,6 +90,9 @@ export function StripeStatusCard({
             </div>
             <div className="text-mono-sm mt-0.5" style={{ color: "var(--lichen)" }}>
               {testMode ? "Test mode" : "Live mode"}
+              {creator.stripeAccountCountry
+                ? ` · ${creator.stripeAccountCountry.toUpperCase()}`
+                : ""}
             </div>
           </div>
           <Link

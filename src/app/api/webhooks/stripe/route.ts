@@ -17,6 +17,7 @@ import type { BillingInterval, SubscriptionStatus } from "@prisma/client";
  *   - charge.refunded                        revoke access on a FULL refund
  *   - charge.dispute.created                 revoke access when a dispute opens
  *   - account.updated                        sync onboarding / restriction state
+ *   - account.application.deauthorized       creator disconnected → clear link
  *
  * Idempotency: every state-mutating handler is keyed on a Stripe id via
  * `upsert` / `updateMany`, so duplicate deliveries replay safely. Multi-row
@@ -81,6 +82,9 @@ export async function POST(req: NextRequest) {
         break;
       case "account.updated":
         await handleAccountUpdated(event.data.object as Stripe.Account);
+        break;
+      case "account.application.deauthorized":
+        await handleAppDeauthorized(event.account);
         break;
       default:
         // ignored
@@ -368,4 +372,21 @@ async function handleAccountUpdated(account: Stripe.Account) {
       disabledReason,
     });
   }
+}
+
+// ---------------------------------------------------------------- deauthorized
+
+// A Standard creator disconnected our platform from their own Stripe dashboard.
+// Clear the link so the storefront hides subscribe buttons and they can
+// reconnect cleanly.
+async function handleAppDeauthorized(accountId: string | undefined) {
+  if (!accountId) return;
+  const res = await db.creator.updateMany({
+    where: { stripeAccountId: accountId },
+    data: { stripeAccountId: null, stripeOnboarded: false, stripeAccountCountry: null },
+  });
+  log("info", "creator disconnected stripe (deauthorized)", {
+    accountId,
+    cleared: res.count,
+  });
 }

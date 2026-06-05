@@ -11,6 +11,11 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_test_place
   typescript: true,
 });
 
+// Connect OAuth application client id (ca_…). Used to build the "Connect with
+// Stripe" authorize URL so creators link an EXISTING account. Register it at
+// Dashboard → Settings → Connect → Onboarding options → OAuth.
+export const STRIPE_CONNECT_CLIENT_ID = process.env.STRIPE_CONNECT_CLIENT_ID ?? "";
+
 // Platform take rate in basis points (e.g., 800 = 8%).
 export const PLATFORM_FEE_BPS = Number(process.env.PLATFORM_FEE_BPS ?? 800);
 
