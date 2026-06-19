@@ -3,8 +3,7 @@ import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { STRIPE_CONNECT_CLIENT_ID } from "@/lib/stripe";
 import { stripeRouteError } from "@/lib/stripe-errors";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+import { APP_URL } from "@/lib/app-url";
 
 /**
  * Start "Connect with Stripe" (Standard accounts via OAuth).

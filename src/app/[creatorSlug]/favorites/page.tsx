@@ -26,6 +26,7 @@ export default async function FavoritesPage({
 
   const paywall = {
     creatorId: creator.id,
+    creatorSlug: creator.slug,
     creatorName: creator.displayName,
     creatorAccent: creator.accentColor,
     plan: toPlanDisplay(creator.plan),

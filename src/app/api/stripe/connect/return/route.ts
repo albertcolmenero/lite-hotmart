@@ -5,8 +5,7 @@ import { stripe } from "@/lib/stripe";
 import { syncPlanToStripe } from "@/lib/stripe-sync";
 import { stripeRouteError } from "@/lib/stripe-errors";
 import { log } from "@/lib/log";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+import { APP_URL } from "@/lib/app-url";
 
 function backTo(flag: string): NextResponse {
   return NextResponse.redirect(new URL(`/studio/plan?saved=${flag}`, APP_URL));

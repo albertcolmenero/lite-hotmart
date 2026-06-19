@@ -6,8 +6,8 @@ import { BYPASS_PAYMENTS } from "./dev-auth";
 import { stripe, PLATFORM_FEE_BPS } from "./stripe";
 import { syncPlanToStripe, syncCourseToStripe, creatorIsLive } from "./stripe-sync";
 import { cadenceMonths } from "./billing-cadences";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+import { creatorAbsoluteUrl } from "./creator-url";
+import { APP_URL } from "./app-url";
 
 /**
  * Per-day bucket for Checkout idempotency keys. A double-click the same day
@@ -133,8 +133,10 @@ export async function subscribeToCreatorAction(input: {
         planId: plan.id,
         planPriceId: planPrice.id,
       },
+      // Success → root library (auth-gated, Clerk session lives on root).
+      // Cancel → the creator's own storefront (custom domain if active).
       success_url: `${APP_URL}/library/${creator.slug}?subscribed=1`,
-      cancel_url: `${APP_URL}/${creator.slug}`,
+      cancel_url: creatorAbsoluteUrl(creator),
     },
     {
       stripeAccount: creator.stripeAccountId!,
@@ -222,7 +224,7 @@ export async function purchaseCourseAction(courseId: string): Promise<PurchaseRe
         courseId: course.id,
       },
       success_url: `${APP_URL}/${course.creator.slug}/courses/${course.slug}?purchased=1`,
-      cancel_url: `${APP_URL}/${course.creator.slug}/courses/${course.slug}`,
+      cancel_url: creatorAbsoluteUrl(course.creator, `/courses/${course.slug}`),
     },
     {
       stripeAccount: course.creator.stripeAccountId!,

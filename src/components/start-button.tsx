@@ -19,7 +19,7 @@ export function StartButton({
   href?: string;
   label?: string;
   className?: string;
-  creator: { id: string; displayName: string; accentColor: string };
+  creator: { id: string; displayName: string; accentColor: string; slug: string };
   plan: PlanDisplay | null;
 }) {
   const router = useRouter();
@@ -46,6 +46,7 @@ export function StartButton({
         open={open}
         onClose={() => setOpen(false)}
         creatorId={creator.id}
+        creatorSlug={creator.slug}
         creatorName={creator.displayName}
         creatorAccent={creator.accentColor}
         plan={plan}

@@ -125,6 +125,7 @@ export default async function CourseDetailPage({
               id: creator.id,
               displayName: creator.displayName,
               accentColor: creator.accentColor,
+              slug: creator.slug,
             }}
             plan={toPlanDisplay(creator.plan)}
           />

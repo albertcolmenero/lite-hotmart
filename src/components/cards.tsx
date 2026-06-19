@@ -10,6 +10,7 @@ import type { PlanDisplay } from "@/lib/plan-display";
 
 export type CardPaywall = {
   creatorId: string;
+  creatorSlug: string;
   creatorName: string;
   creatorAccent: string;
   plan: PlanDisplay | null;
@@ -116,6 +117,7 @@ export function ClassCard({
           open={paywallOpen}
           onClose={() => setPaywallOpen(false)}
           creatorId={paywall.creatorId}
+          creatorSlug={paywall.creatorSlug}
           creatorName={paywall.creatorName}
           creatorAccent={paywall.creatorAccent}
           plan={paywall.plan}

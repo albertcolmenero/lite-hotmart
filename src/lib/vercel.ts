@@ -145,9 +145,15 @@ export function dnsInstructionsFor(domain: string): {
   value: string;
 } {
   const parts = domain.split(".");
-  // Heuristic: 2 parts = apex; 3+ parts = subdomain
+  // Heuristic: 2 parts = apex; 3+ parts = subdomain.
   if (parts.length === 2) {
     return { type: "A", host: "@", value: "76.76.21.21" };
   }
-  return { type: "CNAME", host: parts[0], value: "cname.vercel-dns.com" };
+  // The DNS host is everything left of the apex (last two labels): for
+  // "studio.example.com" → "studio"; for "studio.www.example.com" → "studio.www".
+  return {
+    type: "CNAME",
+    host: parts.slice(0, -2).join("."),
+    value: "cname.vercel-dns.com",
+  };
 }

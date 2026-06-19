@@ -20,6 +20,7 @@ export type SeriesClassRow = {
 
 export type SeriesPlayerPaywall = {
   creatorId: string;
+  creatorSlug: string;
   creatorName: string;
   creatorAccent: string;
   plan: PlanDisplay | null;
@@ -285,6 +286,7 @@ export function SeriesPlayer({
         open={paywallOpen}
         onClose={() => setPaywallOpen(false)}
         creatorId={paywall.creatorId}
+        creatorSlug={paywall.creatorSlug}
         creatorName={paywall.creatorName}
         creatorAccent={paywall.creatorAccent}
         plan={paywall.plan}

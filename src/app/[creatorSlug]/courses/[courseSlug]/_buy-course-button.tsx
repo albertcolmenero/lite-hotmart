@@ -20,7 +20,7 @@ export function BuyCourseButton({
   currency: string;
   subscribed: boolean;
   signedIn: boolean;
-  creator: { id: string; displayName: string; accentColor: string };
+  creator: { id: string; displayName: string; accentColor: string; slug: string };
   plan: PlanDisplay | null;
 }) {
   const router = useRouter();
@@ -76,6 +76,7 @@ export function BuyCourseButton({
         open={paywallOpen}
         onClose={() => setPaywallOpen(false)}
         creatorId={creator.id}
+        creatorSlug={creator.slug}
         creatorName={creator.displayName}
         creatorAccent={creator.accentColor}
         plan={plan}

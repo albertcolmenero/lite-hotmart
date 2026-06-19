@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCreatorForCurrentUser } from "@/lib/auth";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+import { APP_URL } from "@/lib/app-url";
 
 /**
  * Send the creator to their Stripe dashboard.

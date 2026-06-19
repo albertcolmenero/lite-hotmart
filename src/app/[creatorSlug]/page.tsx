@@ -72,6 +72,7 @@ export default async function CreatorLanding({
   const planDisplay = toPlanDisplay(creator.plan);
   const paywall = {
     creatorId: creator.id,
+    creatorSlug: creator.slug,
     creatorName: creator.displayName,
     creatorAccent: creator.accentColor,
     plan: planDisplay,
@@ -90,6 +91,7 @@ export default async function CreatorLanding({
     !subscribed && creator.plan?.active && planDisplay && planDisplay.options.length > 0
       ? {
           creatorId: creator.id,
+          creatorSlug: creator.slug,
           accentColor: creator.accentColor,
           plan: planDisplay,
           signedIn: Boolean(viewer),

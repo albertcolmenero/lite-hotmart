@@ -8,6 +8,7 @@ import { type PlanDisplay, savingsVsMonthly } from "@/lib/plan-display";
 
 export type LandingPlanCardProps = {
   creatorId: string;
+  creatorSlug: string;
   accentColor: string;
   plan: PlanDisplay;
   signedIn: boolean;
@@ -18,6 +19,7 @@ export type LandingPlanCardProps = {
 
 export function LandingPlanCard({
   creatorId,
+  creatorSlug,
   accentColor,
   plan,
   signedIn,
@@ -34,7 +36,9 @@ export function LandingPlanCard({
 
   const handle = (planPriceId: string) => {
     if (!signedIn) {
-      router.push("/sign-in");
+      // Funnel to root sign-in (custom domains have no Clerk session), then
+      // return to the storefront to finish subscribing.
+      window.location.assign(`/sign-in?redirect_url=${encodeURIComponent(`/${creatorSlug}`)}`);
       return;
     }
     setError(null);
@@ -115,7 +119,7 @@ export function LandingPlanCard({
           >
             <span style={{ color: "var(--lichen)" }}>Already a member? </span>
             <Link
-              href="/sign-in"
+              href={`/sign-in?redirect_url=${encodeURIComponent(`/${creatorSlug}`)}`}
               className="font-medium"
               style={{ color: "var(--ink)" }}
             >

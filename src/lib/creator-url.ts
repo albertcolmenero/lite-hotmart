@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { isRootHost, normalizeHost } from "./host-resolver";
+import { APP_URL } from "./app-url";
 
 /**
  * Build a storefront URL aware of the active host.
@@ -34,7 +35,6 @@ export function creatorAbsoluteUrl(
   },
   path: string = "/",
 ): string {
-  const root = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const safePath = path.startsWith("/") ? path : `/${path}`;
   if (
     creator.customDomain &&
@@ -42,7 +42,7 @@ export function creatorAbsoluteUrl(
   ) {
     return `https://${creator.customDomain}${safePath === "/" ? "" : safePath}`;
   }
-  return `${root}/${creator.slug}${safePath === "/" ? "" : safePath}`;
+  return `${APP_URL}/${creator.slug}${safePath === "/" ? "" : safePath}`;
 }
 
 /** True when the current request is on this creator's verified custom domain. */

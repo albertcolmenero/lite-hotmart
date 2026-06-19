@@ -113,7 +113,7 @@ export default async function ClassDetailPage({
         <StartButton
           allowed={access.allowed}
           signedIn={Boolean(viewer)}
-          creator={{ id: creator.id, displayName: creator.displayName, accentColor: creator.accentColor }}
+          creator={{ id: creator.id, displayName: creator.displayName, accentColor: creator.accentColor, slug: creator.slug }}
           plan={toPlanDisplay(creator.plan)}
           label={access.allowed ? "Start class" : "Unlock to start"}
         />

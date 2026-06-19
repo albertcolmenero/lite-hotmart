@@ -4,6 +4,7 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { IS_DEV_BYPASS } from "./lib/dev-auth";
 import { getDomainLookupSecret } from "./lib/domain-lookup-auth";
 import { isRootHost } from "./lib/host-resolver";
+import { APP_URL } from "./lib/app-url";
 
 const isProtectedRoute = createRouteMatcher([
   "/studio(.*)",
@@ -27,16 +28,11 @@ function isRootOnlyPath(pathname: string): boolean {
   return ROOT_ONLY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-function rootOrigin(): string {
-  const env = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  return env.replace(/\/$/, "");
-}
-
 /** Canonical server origin for internal middleware fetches (never the request Host when on custom domains). */
 function middlewareLookupBase(): string | null {
-  const fromPublic = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-  if (fromPublic) return fromPublic;
-  const vercel = process.env.VERCEL_URL?.replace(/\/$/, "");
+  // Prefer the configured app origin; fall back to VERCEL_URL only when it is unset.
+  if (process.env.NEXT_PUBLIC_APP_URL) return APP_URL;
+  const vercel = process.env.VERCEL_URL?.replace(/\/+$/, "");
   if (vercel) return `https://${vercel}`;
   if (process.env.NODE_ENV === "development") return "http://localhost:3000";
   return null;
@@ -182,7 +178,7 @@ const clerkHandler = clerkMiddleware(async (auth, req) => {
 
     // Root-only paths should never serve from a custom domain → bounce to root.
     if (isRootOnlyPath(url.pathname)) {
-      const target = new URL(`${rootOrigin()}${url.pathname}${url.search}`);
+      const target = new URL(`${APP_URL}${url.pathname}${url.search}`);
       return NextResponse.redirect(target, { status: 308 });
     }
 

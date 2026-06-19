@@ -11,6 +11,7 @@ export type PaywallProps = {
   open: boolean;
   onClose: () => void;
   creatorId: string;
+  creatorSlug: string;
   creatorName: string;
   creatorAccent: string;
   plan: PlanDisplay | null;
@@ -21,6 +22,7 @@ export function PaywallModal({
   open,
   onClose,
   creatorId,
+  creatorSlug,
   creatorName,
   creatorAccent,
   plan,
@@ -47,6 +49,12 @@ export function PaywallModal({
   if (!open) return null;
 
   const handleSubscribe = (planPriceId: string) => {
+    // Signed-out (always true on a custom domain — Clerk sessions are root-only):
+    // funnel to root sign-in, then come back to the storefront to subscribe.
+    if (!signedIn) {
+      window.location.assign(`/sign-in?redirect_url=${encodeURIComponent(`/${creatorSlug}`)}`);
+      return;
+    }
     setError(null);
     startTransition(async () => {
       try {
@@ -185,7 +193,11 @@ export function PaywallModal({
               style={{ borderTop: "1px solid var(--bone)" }}
             >
               <span style={{ color: "var(--lichen)" }}>Already a member? </span>
-              <Link href="/sign-in" className="font-medium" style={{ color: "var(--ink)" }}>
+              <Link
+                href={`/sign-in?redirect_url=${encodeURIComponent(`/${creatorSlug}`)}`}
+                className="font-medium"
+                style={{ color: "var(--ink)" }}
+              >
                 Sign in
               </Link>
             </div>
