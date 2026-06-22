@@ -147,11 +147,23 @@ export function SeriesCard({
   category,
 }: {
   creatorSlug: string;
-  series: { slug: string; title: string; coverUrl: string | null };
+  series: {
+    slug: string;
+    title: string;
+    coverUrl: string | null;
+    firstClass?: { thumbnailUrl: string | null; videoUrl: string } | null;
+  };
   classCount: number;
   locked?: boolean;
   category?: string;
 }) {
+  // No explicit cover → fall back to the first class's thumbnail (stored, or
+  // derived for YouTube).
+  const cover =
+    series.coverUrl ??
+    series.firstClass?.thumbnailUrl ??
+    (series.firstClass ? youtubeThumbnail(series.firstClass.videoUrl) : null);
+
   return (
     <Link
       href={`/${creatorSlug}/practice/series/${series.slug}`}
@@ -161,10 +173,10 @@ export function SeriesCard({
         className="relative overflow-hidden"
         style={{ aspectRatio: "4 / 3", background: "var(--stone)" }}
       >
-        {series.coverUrl ? (
+        {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={series.coverUrl}
+            src={cover}
             alt=""
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
           />

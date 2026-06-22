@@ -55,6 +55,11 @@ export default async function CreatorLanding({
       include: {
         categories: { select: { id: true, name: true } },
         _count: { select: { classes: true } },
+        classes: {
+          orderBy: { position: "asc" },
+          take: 1,
+          include: { classRef: { select: { thumbnailUrl: true, videoUrl: true } } },
+        },
       },
       orderBy: { publishedAt: "desc" },
     }),
@@ -209,6 +214,7 @@ export default async function CreatorLanding({
                       slug: s.slug,
                       title: s.title,
                       coverUrl: s.coverUrl,
+                      firstClass: s.classes[0]?.classRef ?? null,
                     }}
                     classCount={s._count.classes}
                     locked={!subscribed && !s.freeForEveryone}

@@ -32,6 +32,18 @@ First execution pass on Block A landed (verified with `tsc --noEmit` + `eslint`,
 
 ---
 
+## Field-reported issues — 2026-06-19 (first-creator testing)
+
+Captured from live testing with the first creator (Anama Movement). Ordered smallest-fix first.
+
+- [x] **Mobile: storefront logo overlaps the nav.** _(Fixed — header now sizes the nav to content and caps the logo to its cell on mobile.)_ On a ~380px viewport the header's 3-column grid (`src/components/storefront-header.tsx:39`) gives each column ~⅓ width (~127px), but the logo is capped at `maxWidth: 180`, so it overflows its cell and collides with the centered nav (Flow / Barre / Rituals). Fix: a responsive logo cap (smaller `maxWidth` below the `sm` breakpoint) or drop the centered-nav grid for a logo + menu layout on mobile. Small CSS change. (Maps to Phase 9 — mobile polish.)
+
+- [x] **Dead "Home page" studio nav → 404.** _(404 fixed — dead nav link removed. Rebuilding the home-page editor remains an optional feature.)_ `src/app/studio/layout.tsx:41` links to `/studio/landing`, but that route was removed when the WYSIWYG home-page editor was rolled back, so it 404s. Note: home content still *renders* on the storefront from `Creator.homeContent` — creators just can't edit it. Two directions: (a) quick — remove the dead nav item; (b) real — rebuild the home-page editor so creators can edit `homeContent`. Needs a product decision.
+
+- [x] **Stripe Customer Portal — `/library/billing`.** _(Wired — per-subscription "Manage" button → portal session on the connected account. One-time setup: each creator must activate the Customer Portal in their connected-account dashboard.)_ Currently a placeholder ("Customer Portal isn't wired up yet" — `src/app/library/billing/page.tsx:17`). Wire `stripe.billingPortal.sessions.create({ customer, return_url })` (on the connected account, since these are direct charges) so subscribers can update their card and cancel themselves. **Already tracked as Phase 4.3** — this is the concrete trigger, and it's now higher priority since there are live subscribers who can't self-manage.
+
+---
+
 ## Block A — Must ship before charging real money
 
 Goal: nothing here is optional. By the end of Block A, a real creator can connect Stripe, take a real payment, and we won't lose money, leak data, or fail silently.

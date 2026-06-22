@@ -38,7 +38,6 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/studio/plan", label: "Plan" },
       { href: "/studio/menu", label: "Menu" },
-      { href: "/studio/landing", label: "Home page" },
       { href: "/studio/branding", label: "Branding" },
       { href: "/studio/domain", label: "Domain" },
       { href: "/studio/settings", label: "Settings" },

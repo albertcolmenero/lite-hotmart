@@ -23,7 +23,9 @@
     "db:studio": "prisma studio",
     "check:domain": "tsx scripts/check-domain.ts",
     "backfill:vimeo": "tsx scripts/backfill-vimeo-thumbnails.ts",
-    "backfill:plan-prices": "tsx scripts/backfill-plan-prices.ts"
+    "backfill:plan-prices": "tsx scripts/backfill-plan-prices.ts",
+    "check:subscriptions": "tsx scripts/check-subscriptions.ts",
+    "reconcile:subscriptions": "tsx scripts/reconcile-subscriptions.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

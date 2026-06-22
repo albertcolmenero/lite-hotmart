@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowUpRight } from "lucide-react";
 import { requireDbUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -23,6 +24,15 @@ export default async function LibraryPage() {
   const followingCreators = Array.from(
     new Map(subs.map((s) => [s.plan.creator.id, s.plan.creator])).values(),
   );
+
+  // Exactly one subscription → jump straight into that creator's studio. We send
+  // them to the root storefront (/{slug}), not the custom domain: that's where
+  // their Clerk session is recognized and content is unlocked (the custom domain
+  // is public-only until Clerk satellite domains). /library/billing and
+  // /library/{slug} remain directly reachable, so this isn't a trap.
+  if (followingCreators.length === 1) {
+    redirect(`/${followingCreators[0].slug}`);
+  }
 
   return (
     <div className="space-y-12">

@@ -47,7 +47,14 @@ export default async function PracticePage({
     db.series.findMany({
       where: { creatorId: creator.id, published: true, ...visibilityFilter },
       orderBy: { publishedAt: "desc" },
-      include: { _count: { select: { classes: true } } },
+      include: {
+        _count: { select: { classes: true } },
+        classes: {
+          orderBy: { position: "asc" },
+          take: 1,
+          include: { classRef: { select: { thumbnailUrl: true, videoUrl: true } } },
+        },
+      },
       take: 6,
     }),
   ]);
@@ -94,7 +101,12 @@ export default async function PracticePage({
               <SeriesCard
                 key={s.id}
                 creatorSlug={creator.slug}
-                series={{ slug: s.slug, title: s.title, coverUrl: s.coverUrl }}
+                series={{
+                  slug: s.slug,
+                  title: s.title,
+                  coverUrl: s.coverUrl,
+                  firstClass: s.classes[0]?.classRef ?? null,
+                }}
                 classCount={s._count.classes}
                 locked={!subscribed && !s.freeForEveryone}
               />

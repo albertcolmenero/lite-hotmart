@@ -36,8 +36,8 @@ export function StorefrontHeader({
         borderBottom: "1px solid var(--bone)",
       }}
     >
-      <div className="max-w-[1180px] mx-auto h-14 px-4 sm:px-6 grid grid-cols-3 items-center">
-        <div className="flex items-center min-w-0">
+      <div className="max-w-[1180px] mx-auto h-14 px-4 sm:px-6 grid grid-cols-[auto_1fr_auto] sm:grid-cols-3 items-center gap-3">
+        <div className="flex items-center min-w-0 overflow-hidden">
           <Link
             href={`/${creatorSlug}`}
             aria-label="Home"
@@ -48,8 +48,7 @@ export function StorefrontHeader({
               <img
                 src={logoUrl}
                 alt=""
-                className="block object-contain object-left"
-                style={{ maxHeight: 36, maxWidth: 180 }}
+                className="block object-contain object-left max-h-9 max-w-[130px] sm:max-w-[180px]"
               />
             ) : (
               <span
@@ -61,14 +60,14 @@ export function StorefrontHeader({
           </Link>
         </div>
 
-        <nav className="flex items-center justify-center gap-1 text-sm">
+        <nav className="flex items-center justify-center gap-1 text-sm min-w-0 overflow-x-auto">
           {tabs.map((t) => {
             const active = pathname.startsWith(t.matchPrefix);
             return (
               <Link
                 key={t.id}
                 href={t.href}
-                className="px-3 py-1.5 rounded-md transition-colors"
+                className="px-2 sm:px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0"
                 style={{
                   color: active ? "var(--ink)" : "var(--lichen)",
                   background: active ? "var(--stone)" : "transparent",

@@ -200,7 +200,11 @@ const clerkHandler = clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
     await auth.protect();
   }
-  // Implicit return → NextResponse.next() with Clerk headers attached.
+  // Expose the request path to server components — the storefront layout reads
+  // it to build the canonical redirect to a creator's custom domain.
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", url.pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 });
 
 export default async function middleware(

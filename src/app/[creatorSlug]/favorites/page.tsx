@@ -36,7 +36,19 @@ export default async function FavoritesPage({
   const favs = await db.favorite.findMany({
     where: { userId: viewer.id },
     orderBy: { createdAt: "desc" },
-    include: { classRef: true, series: true, course: true },
+    include: {
+      classRef: true,
+      series: {
+        include: {
+          classes: {
+            orderBy: { position: "asc" },
+            take: 1,
+            include: { classRef: { select: { thumbnailUrl: true, videoUrl: true } } },
+          },
+        },
+      },
+      course: true,
+    },
   });
 
   const isOwner = viewer.id === creator.userId;
@@ -99,7 +111,12 @@ export default async function FavoritesPage({
               <SeriesCard
                 key={f.id}
                 creatorSlug={creator.slug}
-                series={{ slug: f.series!.slug, title: f.series!.title, coverUrl: f.series!.coverUrl }}
+                series={{
+                  slug: f.series!.slug,
+                  title: f.series!.title,
+                  coverUrl: f.series!.coverUrl,
+                  firstClass: f.series!.classes[0]?.classRef ?? null,
+                }}
                 classCount={0}
               />
             ))}
