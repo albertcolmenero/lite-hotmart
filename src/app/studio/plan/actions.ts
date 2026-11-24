@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { syncPlanToStripe } from "@/lib/stripe-sync";
 import { isSupportedCurrency, DEFAULT_CURRENCY } from "@/lib/currency";
 import { BILLING_CADENCES } from "@/lib/billing-cadences";
+import { planSaleFieldNames, readSaleForSave } from "@/lib/sale-form";
 
 const schema = z.object({
   trialDays: z.coerce.number().int().min(0).max(90),
@@ -31,6 +32,18 @@ export async function upsertPlanAction(formData: FormData) {
     currency: formData.get("currency") || DEFAULT_CURRENCY,
   });
 
+  // Read and validate every cadence's price and sale before writing anything,
+  // so an invalid sale can't leave the plan half-saved.
+  const now = new Date();
+  const cadences = BILLING_CADENCES.map((cadence) => {
+    const cents = parseDollarsToCents(formData.get(`price_${cadence.key}`));
+    const sale =
+      cents == null
+        ? null // cadence not offered: leave any stored sale untouched
+        : readSaleForSave(formData, planSaleFieldNames(cadence.key), "plan", cents, now);
+    return { cadence, cents, sale };
+  });
+
   // Currency is account-level: persist on the creator (source of truth).
   await db.creator.update({
     where: { id: creator.id },
@@ -51,8 +64,7 @@ export async function upsertPlanAction(formData: FormData) {
   // Reconcile one PlanPrice per cadence from the form. A filled price upserts an
   // active row; a blank price deactivates an existing one (the Stripe sync then
   // archives its Price, grandfathering current subscribers).
-  for (const cadence of BILLING_CADENCES) {
-    const cents = parseDollarsToCents(formData.get(`price_${cadence.key}`));
+  for (const { cadence, cents, sale } of cadences) {
     const existing = await db.planPrice.findUnique({
       where: {
         planId_interval_intervalCount: {
@@ -70,7 +82,7 @@ export async function upsertPlanAction(formData: FormData) {
     } else if (existing) {
       await db.planPrice.update({
         where: { id: existing.id },
-        data: { priceCents: cents, active: true },
+        data: { priceCents: cents, active: true, ...sale },
       });
     } else {
       await db.planPrice.create({
@@ -80,6 +92,7 @@ export async function upsertPlanAction(formData: FormData) {
           intervalCount: cadence.intervalCount,
           priceCents: cents,
           active: true,
+          ...sale,
         },
       });
     }

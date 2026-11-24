@@ -1,6 +1,8 @@
 import type { Category, Class, Tag } from "@prisma/client";
-import { Field, ToggleRow } from "@/components/studio-form";
+import { Field, MoneyInput, ToggleRow } from "@/components/studio-form";
 import { currencySymbol } from "@/lib/currency";
+import { COURSE_SALE_FIELDS } from "@/lib/sale-form";
+import { SalePriceInput, SaleValidity, SaleWindowInputs } from "@/components/sale-fields";
 
 export function CourseFormFields({
   classes,
@@ -18,6 +20,8 @@ export function CourseFormFields({
     description?: string | null;
     coverUrl?: string | null;
     priceDollars?: number;
+    /** Current or upcoming sale only (ISO dates). */
+    sale?: { salePriceCents: number; saleStartsAt: string | null; saleEndsAt: string | null } | null;
     visibleToPublic?: boolean;
     published?: boolean;
     classIds?: string[];
@@ -75,23 +79,34 @@ export function CourseFormFields({
       </Field>
 
       <Field label="Price" hint={`${currency.toUpperCase()} · one-time`}>
-        <div
-          className="input flex items-baseline"
-          style={{ padding: "0.5rem 0.75rem" }}
-        >
-          <span style={{ color: "var(--lichen)" }}>{currencySymbol(currency)}</span>
-          <input
-            name="priceDollars"
-            type="number"
-            step="0.01"
-            min={0}
-            required
-            defaultValue={defaults?.priceDollars ?? ""}
-            className="flex-1 ml-1 bg-transparent outline-none"
-            style={{ fontSize: "1.0625rem", fontWeight: 500, color: "var(--ink)" }}
-          />
-        </div>
+        <MoneyInput
+          name="priceDollars"
+          symbol={currencySymbol(currency)}
+          defaultValue={defaults?.priceDollars}
+          required
+        />
       </Field>
+
+      <div className="space-y-3 pt-2" style={{ borderTop: "1px solid var(--bone)" }}>
+        <Field label="Sale price" hint="Blank = no sale · storefront shows the regular price crossed out">
+          <div style={{ maxWidth: 220 }}>
+            <SalePriceInput
+              name={COURSE_SALE_FIELDS.price}
+              symbol={currencySymbol(currency)}
+              defaultCents={defaults?.sale?.salePriceCents ?? null}
+            />
+          </div>
+        </Field>
+        <SaleWindowInputs
+          startsName={COURSE_SALE_FIELDS.startsAt}
+          endsName={COURSE_SALE_FIELDS.endsAt}
+          defaultStartsAt={defaults?.sale?.saleStartsAt ?? null}
+          defaultEndsAt={defaults?.sale?.saleEndsAt ?? null}
+        />
+        <SaleValidity
+          configs={[{ names: COURSE_SALE_FIELDS, kind: "course", listPriceName: "priceDollars" }]}
+        />
+      </div>
 
       <Field label="Classes" hint="Check to include · order top-to-bottom">
         <div

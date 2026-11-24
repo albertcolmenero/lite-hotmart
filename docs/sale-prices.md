@@ -38,7 +38,7 @@ All new columns are nullable (migration `1_sale_prices`):
 | 0 | Webhook finds the right billing option for subscribers on archived prices; test harness | Done (branch `fix/subscription-renewal-price-lookup`) |
 | 1 | Baseline migration, sale columns, `pricing.ts` and tests | Done |
 | 2 | Checkout + Stripe coupon sync; course fee from the price charged; Checkout expires when the sale ends; webhook records the discount | Done |
-| 3 | Studio: sale fields on the plan and course forms | |
+| 3 | Studio: sale fields on the plan and course forms | Done |
 | 4 | Storefront: strike-through, "then €X" wording, "Sale ends" | |
 | 5 | Revenue figures use the discount | |
 
@@ -70,6 +70,27 @@ All new columns are nullable (migration `1_sale_prices`):
 
 Tests: `tests/checkout-sale.test.ts` (checkout against the real test database,
 with Stripe faked), `tests/pricing.test.ts`.
+
+## Studio (phase 3)
+
+- **Plan page, Sale card:** one sale window (start, end) shared by every
+  billing option, plus a sale price and "for the first N periods" or "forever"
+  per billing option. The window is saved onto each billing option that has a
+  sale price. A blank sale price means no sale.
+- **Course form:** sale price plus its own start and end.
+- **Dates:** entered in the creator's browser time zone, shown on the form, and
+  sent to the server as UTC.
+- **Validation:** `lib/sale-form.ts` reads the form; the browser and the server
+  actions both run it with `validateSale`. The browser blocks submit with a
+  message on the field at fault. The server rejects again before writing
+  anything, so a bad sale can't half-save the plan.
+- **Ended sales:** shown as no sale, so saving the form clears them instead of
+  failing on a past end date.
+- **Known gaps:**
+  - Changing the currency selector doesn't update the sale fields' currency
+    symbol until the plan is saved.
+  - An end date that passes while the page is open is rejected by the server
+    (error page) rather than in the browser.
 
 Still to check in Stripe test mode (not possible from the test suite):
 - Does a limited coupon's window start at signup, so a trial uses up part of it?

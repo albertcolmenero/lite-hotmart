@@ -122,6 +122,8 @@ Two recurring visual signatures across both modes:
 | `Chip` | Mono small + Bone border + Stone fill | Used for tags, durations, prices |
 | `Modal` | Paper background + max-w 480 + scale-in via `ease-editorial` | Always announces with display serif title |
 | `Input` | Underline-only on focus (Ember underline 2px) | No bordered box. Hairline divider below the label. |
+| `MoneyInput` (`components/studio-form.tsx`) | `.input` box with the currency symbol prefix | Every studio price field. `size="lg"` for plan pricing, `md` elsewhere. |
+| Sale fields (`components/sale-fields.tsx`) | `SalePriceInput`, `SaleWindowInputs` (local date/time, sent as UTC), `SaleDurationInputs`, `SaleValidity` | `SaleValidity` checks the form with `lib/pricing` rules and blocks submit via native field messages. Used on the plan and course forms. |
 
 ## Accessibility floor
 

@@ -7,6 +7,7 @@ import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { syncCourseToStripe, archiveStripeCourse } from "@/lib/stripe-sync";
 import { assertOwned } from "@/lib/ownership";
+import { COURSE_SALE_FIELDS, readSaleForSave } from "@/lib/sale-form";
 
 const schema = z.object({
   id: z.string().min(1),
@@ -36,6 +37,8 @@ export async function updateCourseAction(formData: FormData) {
 
   const existing = await db.course.findFirst({ where: { id: parsed.id, creatorId: creator.id } });
   if (!existing) throw new Error("Not found");
+  const priceCents = Math.round(parsed.priceDollars * 100);
+  const sale = readSaleForSave(formData, COURSE_SALE_FIELDS, "course", priceCents, new Date());
 
   const orderedAll = formData.getAll("classOrder").map(String);
   const checked = new Set(formData.getAll("classIds").map(String));
@@ -55,7 +58,8 @@ export async function updateCourseAction(formData: FormData) {
         eyebrow: parsed.eyebrow,
         description: parsed.description,
         coverUrl: parsed.coverUrl,
-        priceCents: Math.round(parsed.priceDollars * 100),
+        priceCents,
+        ...sale,
         currency: creator.currency,
         visibleToPublic: parsed.visibleToPublic,
         published: parsed.published,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Field } from "@/components/studio-form";
+import { Field, MoneyInput } from "@/components/studio-form";
 import { SUPPORTED_CURRENCIES, currencySymbol } from "@/lib/currency";
 import { BILLING_CADENCES } from "@/lib/billing-cadences";
 
@@ -46,18 +46,7 @@ export function PricingFields({
         </div>
         {BILLING_CADENCES.map((c) => (
           <Field key={c.key} label={c.label} hint={c.note}>
-            <div className="input flex items-baseline" style={{ padding: "0.5rem 0.75rem" }}>
-              <span style={{ color: "var(--lichen)" }}>{sym}</span>
-              <input
-                name={`price_${c.key}`}
-                type="number"
-                step="0.01"
-                min={0}
-                defaultValue={priceDollars[c.key] ?? ""}
-                className="flex-1 ml-1 bg-transparent outline-none tabular"
-                style={{ fontSize: "1.125rem", fontWeight: 600, color: "var(--ink)" }}
-              />
-            </div>
+            <MoneyInput name={`price_${c.key}`} symbol={sym} defaultValue={priceDollars[c.key]} size="lg" />
           </Field>
         ))}
       </div>

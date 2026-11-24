@@ -51,3 +51,9 @@ export function cadenceNote(interval: string, intervalCount: number): string {
   if (interval === "year") return intervalCount === 1 ? "per year" : `every ${intervalCount} years`;
   return intervalCount === 1 ? "per month" : `every ${intervalCount} months`;
 }
+
+/** What one billing period is called in "for the first N …": months, years, 3-month periods. */
+export function cadencePeriodNoun(c: Pick<Cadence, "interval" | "intervalCount" | "months">): string {
+  if (c.intervalCount === 1) return c.interval === "year" ? "years" : "months";
+  return `${c.months}-month periods`;
+}

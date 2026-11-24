@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { slugify, ensureUniqueSlug } from "@/lib/slug";
 import { syncCourseToStripe } from "@/lib/stripe-sync";
 import { assertOwned } from "@/lib/ownership";
+import { COURSE_SALE_FIELDS, readSaleForSave } from "@/lib/sale-form";
 
 const schema = z.object({
   title: z.string().min(1).max(200),
@@ -32,6 +33,8 @@ export async function createCourseAction(formData: FormData) {
     visibleToPublic: formData.get("visibleToPublic") === "on",
     published: formData.get("published") === "on",
   });
+  const priceCents = Math.round(parsed.priceDollars * 100);
+  const sale = readSaleForSave(formData, COURSE_SALE_FIELDS, "course", priceCents, new Date());
 
   const slug = await ensureUniqueSlug(slugify(parsed.title), async (candidate) =>
     Boolean(
@@ -58,7 +61,8 @@ export async function createCourseAction(formData: FormData) {
       eyebrow: parsed.eyebrow,
       description: parsed.description,
       coverUrl: parsed.coverUrl,
-      priceCents: Math.round(parsed.priceDollars * 100),
+      priceCents,
+      ...sale,
       currency: creator.currency,
       visibleToPublic: parsed.visibleToPublic,
       published: parsed.published,

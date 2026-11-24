@@ -1,9 +1,17 @@
+import type { PlanPrice } from "@prisma/client";
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { FormCard, Field, ToggleRow } from "@/components/studio-form";
 import { StripeStatusCard, getStripeStatus } from "@/components/stripe-status";
-import { DEFAULT_CURRENCY } from "@/lib/currency";
-import { BILLING_CADENCES } from "@/lib/billing-cadences";
+import { DEFAULT_CURRENCY, currencySymbol } from "@/lib/currency";
+import { BILLING_CADENCES, cadencePeriodNoun } from "@/lib/billing-cadences";
+import { PLAN_SALE_WINDOW, planSaleFieldNames, saleFormDefaults } from "@/lib/sale-form";
+import {
+  SaleDurationInputs,
+  SalePriceInput,
+  SaleValidity,
+  SaleWindowInputs,
+} from "@/components/sale-fields";
 import { PricingFields } from "./_pricing-fields";
 import { upsertPlanAction } from "./actions";
 
@@ -20,11 +28,25 @@ export default async function PlanPage() {
   // (e.g. before the Creator.currency column is pushed, or a stale client).
   const currency = creator.currency ?? DEFAULT_CURRENCY;
   const priceDollars: Record<string, number> = {};
+  // Current or upcoming sales only: an ended sale shows as none, so saving clears it.
+  const now = new Date();
+  const saleDefaults: Record<string, PlanPrice> = {};
+  let saleWindow: { startsAt: string | null; endsAt: string | null } | null = null;
   for (const pp of activePrices) {
     const cadence = BILLING_CADENCES.find(
       (c) => c.interval === pp.interval && c.intervalCount === pp.intervalCount,
     );
-    if (cadence) priceDollars[cadence.key] = pp.priceCents / 100;
+    if (!cadence) continue;
+    priceDollars[cadence.key] = pp.priceCents / 100;
+    const sale = saleFormDefaults(pp, now);
+    if (sale) {
+      saleDefaults[cadence.key] = sale;
+      // All cadences on sale share one window (the form saves it to each).
+      saleWindow ??= {
+        startsAt: sale.saleStartsAt?.toISOString() ?? null,
+        endsAt: sale.saleEndsAt?.toISOString() ?? null,
+      };
+    }
   }
 
   return (
@@ -64,6 +86,53 @@ export default async function PlanPage() {
             defaultChecked={plan?.active ?? true}
             title="Plan is active"
             body="Shown to visitors. Turn off to hide from your storefront."
+          />
+        </FormCard>
+
+        <FormCard
+          title="Sale"
+          description="Lower prices for a limited time. Your storefront shows the regular price crossed out."
+        >
+          <SaleWindowInputs
+            startsName={PLAN_SALE_WINDOW.startsAt}
+            endsName={PLAN_SALE_WINDOW.endsAt}
+            defaultStartsAt={saleWindow?.startsAt ?? null}
+            defaultEndsAt={saleWindow?.endsAt ?? null}
+          />
+          {BILLING_CADENCES.map((c) => {
+            const names = planSaleFieldNames(c.key);
+            const d = saleDefaults[c.key];
+            return (
+              <div key={c.key} className="pt-4 space-y-2" style={{ borderTop: "1px solid var(--bone)" }}>
+                <Field label={`${c.label} sale price`} hint="Blank = no sale">
+                  <div style={{ maxWidth: 220 }}>
+                    <SalePriceInput
+                      name={names.price}
+                      symbol={currencySymbol(currency)}
+                      defaultCents={d?.salePriceCents ?? null}
+                    />
+                  </div>
+                </Field>
+                <SaleDurationInputs
+                  durationName={names.duration!}
+                  periodsName={names.periods!}
+                  periodNoun={cadencePeriodNoun(c)}
+                  defaultDuration={d?.saleDuration ?? null}
+                  defaultPeriods={d?.salePeriods ?? null}
+                />
+              </div>
+            );
+          })}
+          <p className="text-sm" style={{ color: "var(--lichen)" }}>
+            People who subscribe during the sale keep the sale price for as long as you choose
+            above. Current subscribers aren&apos;t affected.
+          </p>
+          <SaleValidity
+            configs={BILLING_CADENCES.map((c) => ({
+              names: planSaleFieldNames(c.key),
+              kind: "plan" as const,
+              listPriceName: `price_${c.key}`,
+            }))}
           />
         </FormCard>
 

@@ -97,3 +97,44 @@ export function ToggleRow({
     </label>
   );
 }
+
+/**
+ * Amount input with a currency symbol prefix, in major units ("12.50").
+ * `size="lg"` is the plan pricing style; `md` matches the course form.
+ */
+export function MoneyInput({
+  name,
+  symbol,
+  defaultValue,
+  required,
+  placeholder,
+  size = "md",
+}: {
+  name: string;
+  symbol: string;
+  defaultValue?: number | string;
+  required?: boolean;
+  placeholder?: string;
+  size?: "md" | "lg";
+}) {
+  return (
+    <div className="input flex items-baseline" style={{ padding: "0.5rem 0.75rem" }}>
+      <span style={{ color: "var(--lichen)" }}>{symbol}</span>
+      <input
+        name={name}
+        type="number"
+        step="0.01"
+        min={0}
+        required={required}
+        placeholder={placeholder}
+        defaultValue={defaultValue ?? ""}
+        className={`flex-1 ml-1 bg-transparent outline-none${size === "lg" ? " tabular" : ""}`}
+        style={
+          size === "lg"
+            ? { fontSize: "1.125rem", fontWeight: 600, color: "var(--ink)" }
+            : { fontSize: "1.0625rem", fontWeight: 500, color: "var(--ink)" }
+        }
+      />
+    </div>
+  );
+}
