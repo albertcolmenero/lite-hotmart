@@ -4,7 +4,7 @@ import { z } from "zod";
 import { stripe } from "@/lib/stripe";
 import { db } from "@/lib/db";
 import { log } from "@/lib/log";
-import type { BillingInterval, SubscriptionStatus } from "@prisma/client";
+import { syncSubscriptionFromStripe } from "@/lib/subscription-sync";
 
 /**
  * Connect-aware Stripe webhook endpoint.
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
         break;
       case "customer.subscription.created":
       case "customer.subscription.updated":
-        await handleSubscriptionUpsert(event.data.object as Stripe.Subscription);
+        await handleSubscriptionUpsert(event.data.object as Stripe.Subscription, event.account);
         break;
       case "customer.subscription.deleted":
         await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
@@ -169,97 +169,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
 // ---------------------------------------------------------------- subscriptions
 
-async function handleSubscriptionUpsert(sub: Stripe.Subscription) {
-  const priceId = sub.items.data[0]?.price.id;
-  if (!priceId) return;
-
-  // Resolve the cadence (PlanPrice) by its Stripe Price id → its Plan + creator.
-  const planPrice = await db.planPrice.findFirst({
-    where: { stripePriceId: priceId },
-    include: { plan: { include: { creator: true } } },
-  });
-  if (!planPrice) {
-    log("warn", "subscription event for unknown price", { priceId, subId: sub.id });
+async function handleSubscriptionUpsert(sub: Stripe.Subscription, accountId: string | undefined) {
+  // Every subscription lives on a creator's connected account (direct charges).
+  if (!accountId) {
+    log("warn", "subscription event without connected account; ignoring", { subId: sub.id });
     return;
   }
-  const plan = planPrice.plan;
-  const interval: BillingInterval = planPrice.interval === "year" ? "year" : "month";
-
-  // Resolve our user id — first from subscription metadata (set at Checkout),
-  // then fall back to the Customer email.
-  let userId = (sub.metadata && sub.metadata.userId) || null;
-  if (!userId && typeof sub.customer === "string") {
-    const customer = await stripe.customers.retrieve(sub.customer, undefined, {
-      stripeAccount: plan.creator.stripeAccountId ?? undefined,
-    });
-    if (customer && !customer.deleted && customer.email) {
-      const u = await db.user.findUnique({ where: { email: customer.email } });
-      if (u) userId = u.id;
-    }
-  }
-  if (!userId) {
-    log("warn", "could not resolve user for subscription", { subId: sub.id });
-    return;
-  }
-
-  const status = sub.status as SubscriptionStatus;
-  const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
-  const item = sub.items.data[0];
-  const periodStart = new Date(item.current_period_start * 1000);
-  const periodEnd = new Date(item.current_period_end * 1000);
-  const isActive = status === "active" || status === "trialing";
-
-  await db.$transaction(async (tx) => {
-    const dbSub = await tx.subscription.upsert({
-      where: { stripeSubscriptionId: sub.id },
-      update: {
-        status,
-        planPriceId: planPrice.id,
-        interval,
-        stripePriceId: priceId,
-        currentPeriodStart: periodStart,
-        currentPeriodEnd: periodEnd,
-        cancelAtPeriodEnd: sub.cancel_at_period_end,
-        endedAt: sub.ended_at ? new Date(sub.ended_at * 1000) : null,
-      },
-      create: {
-        userId,
-        planId: plan.id,
-        planPriceId: planPrice.id,
-        interval,
-        stripeSubscriptionId: sub.id,
-        stripeCustomerId: customerId,
-        stripePriceId: priceId,
-        status,
-        currentPeriodStart: periodStart,
-        currentPeriodEnd: periodEnd,
-        cancelAtPeriodEnd: sub.cancel_at_period_end,
-      },
-    });
-
-    // Entitlement keyed deterministically by subscription.
-    const entId = `sub_${dbSub.id}`;
-    if (isActive) {
-      await tx.entitlement.upsert({
-        where: { id: entId },
-        update: { expiresAt: periodEnd, creatorId: plan.creatorId },
-        create: {
-          id: entId,
-          userId,
-          source: "subscription",
-          subscriptionId: dbSub.id,
-          creatorId: plan.creatorId,
-          expiresAt: periodEnd,
-        },
-      });
-    } else {
-      // Past-due / unpaid / canceled — let entitlement lapse at period end.
-      await tx.entitlement.updateMany({
-        where: { id: entId },
-        data: { expiresAt: periodEnd },
-      });
-    }
-  });
+  await syncSubscriptionFromStripe(sub, accountId);
 }
 
 async function handleSubscriptionDeleted(sub: Stripe.Subscription) {

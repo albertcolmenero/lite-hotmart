@@ -98,6 +98,24 @@ Open http://localhost:3000.
 - `pnpm prisma studio` — explore the database
 - `pnpm prisma db push` — apply schema changes (dev)
 - `pnpm prisma migrate dev` — create and apply a migration
+- `pnpm test` — run the flow tests (needs a local test database, see below)
+
+## Tests
+
+Flow tests (vitest) run against a real Postgres, never the app's `DATABASE_URL`.
+Set `TEST_DATABASE_URL` in `.env.test` or your shell. The run refuses any host
+other than localhost and any database whose name doesn't contain `test`.
+
+```bash
+brew services start postgresql@15
+createdb lite_hotmart_test
+echo 'TEST_DATABASE_URL=postgresql://localhost:5432/lite_hotmart_test' > .env.test
+pnpm test
+```
+
+Each run pushes the current schema to the test database (non-destructive) and
+truncates tables between tests. If a schema change can't be pushed without data
+loss, drop and recreate the test database: `dropdb lite_hotmart_test && createdb lite_hotmart_test`.
 
 ## Paywall model
 

@@ -1,30 +1,19 @@
 /**
  * Recover local Subscriptions from Stripe for a creator's connected account —
  * a safety net for missed/failed webhooks. Pulls the connected account's live
- * subscriptions and upserts the local Subscription + Entitlement, mirroring the
- * webhook's handleSubscriptionUpsert.
+ * subscriptions and upserts the local Subscription + Entitlement through the same
+ * syncSubscriptionFromStripe the webhook uses.
  *
  * Must run with the LIVE platform key (the connected account is live):
  *   STRIPE_SECRET_KEY=sk_live_... pnpm tsx scripts/reconcile-subscriptions.ts anamamovement
  *   STRIPE_SECRET_KEY=sk_live_... pnpm tsx scripts/reconcile-subscriptions.ts anamamovement --apply
  */
 import Stripe from "stripe";
-import { PrismaClient, type SubscriptionStatus, type BillingInterval } from "@prisma/client";
+import { db } from "../src/lib/db";
+import { syncSubscriptionFromStripe } from "../src/lib/subscription-sync";
 
-const db = new PrismaClient();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", { apiVersion: "2026-04-22.dahlia" });
 const APPLY = process.argv.includes("--apply");
-
-const STATUS_MAP: Record<string, SubscriptionStatus> = {
-  active: "active",
-  trialing: "trialing",
-  past_due: "past_due",
-  canceled: "canceled",
-  unpaid: "unpaid",
-  incomplete: "incomplete",
-  incomplete_expired: "canceled",
-  paused: "past_due",
-};
 
 async function main() {
   const slug = process.argv[2];
@@ -59,95 +48,17 @@ async function main() {
 
   let recorded = 0;
   for (const sub of subs.data) {
-    const priceId = sub.items.data[0]?.price.id;
-    if (!priceId) {
-      console.log(`  ! ${sub.id}: no price`);
-      continue;
-    }
-    const planPrice = await db.planPrice.findFirst({
-      where: { stripePriceId: priceId },
-      include: { plan: true },
+    // Same code path as the webhook (customer.subscription.created/updated).
+    const outcome = await syncSubscriptionFromStripe(sub, creator.stripeAccountId, {
+      dryRun: !APPLY,
     });
-    if (!planPrice) {
-      console.log(`  ! ${sub.id}: no local PlanPrice for ${priceId}`);
+    if (outcome.kind === "skipped") {
+      console.log(`  ! ${sub.id}: skipped (${outcome.reason})`);
       continue;
     }
-
-    // Resolve the local user: subscription metadata first, then customer email.
-    let userId = (sub.metadata && sub.metadata.userId) || null;
-    let email: string | null = null;
-    if (!userId && typeof sub.customer === "string") {
-      const cust = await stripe.customers
-        .retrieve(sub.customer, undefined, { stripeAccount: creator.stripeAccountId })
-        .catch(() => null);
-      if (cust && !("deleted" in cust && cust.deleted)) email = (cust as Stripe.Customer).email ?? null;
-      if (email) {
-        const u = await db.user.findUnique({ where: { email } });
-        if (u) userId = u.id;
-      }
-    }
-    if (!userId) {
-      console.log(`  ! ${sub.id}: cannot resolve user (email=${email ?? "?"})`);
-      continue;
-    }
-
-    const item = sub.items.data[0];
-    const periodStart = new Date(item.current_period_start * 1000);
-    const periodEnd = new Date(item.current_period_end * 1000);
-    const status: SubscriptionStatus = STATUS_MAP[sub.status] ?? "active";
-    const interval: BillingInterval = planPrice.interval === "year" ? "year" : "month";
-    const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
-    const isActive = status === "active" || status === "trialing";
-
     console.log(
-      `  ${APPLY ? "→" : "·"} ${sub.id}  status=${status}  user=${userId}  ${planPrice.interval}×${planPrice.intervalCount}  ends=${periodEnd.toISOString().slice(0, 10)}`,
+      `  ${APPLY ? "→" : "·"} ${sub.id}  status=${outcome.status}  user=${outcome.userId}  planPrice=${outcome.planPriceId}  ends=${outcome.periodEnd.toISOString().slice(0, 10)}`,
     );
-    if (!APPLY) {
-      recorded++;
-      continue;
-    }
-
-    const dbSub = await db.subscription.upsert({
-      where: { stripeSubscriptionId: sub.id },
-      update: {
-        status,
-        planPriceId: planPrice.id,
-        interval,
-        stripePriceId: priceId,
-        currentPeriodStart: periodStart,
-        currentPeriodEnd: periodEnd,
-        cancelAtPeriodEnd: sub.cancel_at_period_end,
-        endedAt: sub.ended_at ? new Date(sub.ended_at * 1000) : null,
-      },
-      create: {
-        userId,
-        planId: planPrice.plan.id,
-        planPriceId: planPrice.id,
-        interval,
-        stripeSubscriptionId: sub.id,
-        stripeCustomerId: customerId,
-        stripePriceId: priceId,
-        status,
-        currentPeriodStart: periodStart,
-        currentPeriodEnd: periodEnd,
-        cancelAtPeriodEnd: sub.cancel_at_period_end,
-      },
-    });
-    const entId = `sub_${dbSub.id}`;
-    if (isActive) {
-      await db.entitlement.upsert({
-        where: { id: entId },
-        update: { expiresAt: periodEnd, creatorId: planPrice.plan.creatorId },
-        create: {
-          id: entId,
-          userId,
-          source: "subscription",
-          subscriptionId: dbSub.id,
-          creatorId: planPrice.plan.creatorId,
-          expiresAt: periodEnd,
-        },
-      });
-    }
     recorded++;
   }
 

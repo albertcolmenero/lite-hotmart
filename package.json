@@ -25,7 +25,9 @@
     "backfill:vimeo": "tsx scripts/backfill-vimeo-thumbnails.ts",
     "backfill:plan-prices": "tsx scripts/backfill-plan-prices.ts",
     "check:subscriptions": "tsx scripts/check-subscriptions.ts",
-    "reconcile:subscriptions": "tsx scripts/reconcile-subscriptions.ts"
+    "reconcile:subscriptions": "tsx scripts/reconcile-subscriptions.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -68,6 +70,7 @@
     "prisma": "^6",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3"
   }
 }
