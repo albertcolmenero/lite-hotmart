@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_SALE_PERIODS,
+  addMonthsUTC,
+  checkoutExpiresAt,
+  saleCouponSpec,
+  saleSubscriptionMetadata,
+  subscriberDiscount,
   effectivePlanPrice,
   effectivePrice,
   saleTerms,
@@ -157,5 +162,105 @@ describe("validateSale", () => {
       "saleEndsAt",
       "saleDuration",
     ]);
+  });
+});
+
+describe("saleCouponSpec", () => {
+  const base = {
+    listPriceCents: 1500,
+    salePriceCents: 900,
+    currency: "USD",
+    productId: "prod_1",
+    saleEndsAt: null,
+  };
+
+  it("maps durations: course and 1 period → once, N periods → repeating months, forever", () => {
+    expect(saleCouponSpec({ ...base, terms: null }).params).toEqual({
+      name: "Sale",
+      amount_off: 600,
+      currency: "usd",
+      duration: "once",
+      applies_to: { products: ["prod_1"] },
+    });
+    expect(saleCouponSpec({ ...base, terms: { kind: "periods", periods: 1 }, periodMonths: 1 }).params.duration).toBe(
+      "once",
+    );
+    expect(
+      saleCouponSpec({ ...base, terms: { kind: "periods", periods: 3 }, periodMonths: 1 }).params,
+    ).toMatchObject({ duration: "repeating", duration_in_months: 3 });
+    expect(
+      saleCouponSpec({ ...base, terms: { kind: "periods", periods: 2 }, periodMonths: 6 }).params,
+    ).toMatchObject({ duration: "repeating", duration_in_months: 12 });
+    expect(saleCouponSpec({ ...base, terms: { kind: "forever" } }).params.duration).toBe("forever");
+  });
+
+  it("sets redeem_by from the sale end", () => {
+    const end = new Date("2026-12-01T00:00:00Z");
+    expect(saleCouponSpec({ ...base, saleEndsAt: end, terms: null }).params.redeem_by).toBe(end.getTime() / 1000);
+  });
+
+  it("gives the same fingerprint for the same inputs and a new one when any input changes", () => {
+    const a = saleCouponSpec({ ...base, terms: null }).fingerprint;
+    expect(saleCouponSpec({ ...base, terms: null }).fingerprint).toBe(a);
+    expect(saleCouponSpec({ ...base, salePriceCents: 800, terms: null }).fingerprint).not.toBe(a);
+    expect(saleCouponSpec({ ...base, listPriceCents: 1600, terms: null }).fingerprint).not.toBe(a);
+    expect(saleCouponSpec({ ...base, currency: "eur", terms: null }).fingerprint).not.toBe(a);
+    expect(saleCouponSpec({ ...base, productId: "prod_2", terms: null }).fingerprint).not.toBe(a);
+    expect(saleCouponSpec({ ...base, saleEndsAt: NOW, terms: null }).fingerprint).not.toBe(a);
+  });
+
+  it("refuses a multi-period plan sale without the cadence length", () => {
+    expect(() => saleCouponSpec({ ...base, terms: { kind: "periods", periods: 3 } })).toThrow();
+  });
+});
+
+describe("checkoutExpiresAt", () => {
+  const sec = (d: Date) => Math.floor(d.getTime() / 1000);
+  it("is unset when the sale has no end", () => {
+    expect(checkoutExpiresAt(null, NOW)).toBeUndefined();
+  });
+  it("ends the session when the sale ends", () => {
+    expect(checkoutExpiresAt(after(2 * HOUR), NOW)).toBe(sec(after(2 * HOUR)));
+  });
+  it("keeps Stripe's 30-minute floor and 24-hour ceiling", () => {
+    expect(checkoutExpiresAt(after(10 * 60_000), NOW)).toBe(sec(after(31 * 60_000)));
+    expect(checkoutExpiresAt(after(72 * HOUR), NOW)).toBe(sec(after(24 * HOUR)));
+  });
+});
+
+describe("subscriber discount", () => {
+  const start = new Date("2026-01-31T10:00:00Z");
+
+  it("addMonthsUTC clamps to the end of shorter months", () => {
+    expect(addMonthsUTC(start, 1).toISOString()).toBe("2026-02-28T10:00:00.000Z");
+    expect(addMonthsUTC(start, 12).toISOString()).toBe("2027-01-31T10:00:00.000Z");
+  });
+
+  it("round-trips the metadata Checkout writes", () => {
+    const onSale = effectivePlanPrice(cadence(), NOW);
+    const metadata = saleSubscriptionMetadata(onSale);
+    expect(metadata).toEqual({ discountCents: "600", discountPeriods: "3" });
+    expect(subscriberDiscount({ hasStripeDiscount: true, metadata, start, periodMonths: 1 })).toEqual({
+      discountCents: 600,
+      discountEndsAt: addMonthsUTC(start, 3),
+    });
+  });
+
+  it("forever has no end; no Stripe discount or unknown metadata means none", () => {
+    const forever = { discountCents: "600", discountPeriods: "forever" };
+    expect(subscriberDiscount({ hasStripeDiscount: true, metadata: forever, start, periodMonths: 1 })).toEqual({
+      discountCents: 600,
+      discountEndsAt: null,
+    });
+    const none = { discountCents: null, discountEndsAt: null };
+    expect(subscriberDiscount({ hasStripeDiscount: false, metadata: forever, start, periodMonths: 1 })).toEqual(none);
+    expect(subscriberDiscount({ hasStripeDiscount: true, metadata: {}, start, periodMonths: 1 })).toEqual(none);
+    expect(
+      subscriberDiscount({ hasStripeDiscount: true, metadata: { discountCents: "600", discountPeriods: "0" }, start, periodMonths: 1 }),
+    ).toEqual(none);
+  });
+
+  it("writes no sale metadata when not on sale", () => {
+    expect(saleSubscriptionMetadata(effectivePlanPrice(cadence({ salePriceCents: null }), NOW))).toEqual({});
   });
 });

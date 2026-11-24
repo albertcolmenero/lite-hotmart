@@ -3,8 +3,21 @@
 import { db } from "./db";
 import { requireDbUser } from "./auth";
 import { BYPASS_PAYMENTS } from "./dev-auth";
-import { stripe, PLATFORM_FEE_BPS } from "./stripe";
-import { syncPlanToStripe, syncCourseToStripe, creatorIsLive } from "./stripe-sync";
+import { stripe, PLATFORM_FEE_BPS, applicationFeeAmount } from "./stripe";
+import {
+  syncPlanToStripe,
+  syncCourseToStripe,
+  creatorIsLive,
+  ensurePlanPriceSaleCoupon,
+  ensureCourseSaleCoupon,
+} from "./stripe-sync";
+import {
+  checkoutExpiresAt,
+  effectivePlanPrice,
+  effectivePrice,
+  saleSubscriptionMetadata,
+  subscriberDiscount,
+} from "./pricing";
 import { cadenceMonths } from "./billing-cadences";
 import { creatorAbsoluteUrl } from "./creator-url";
 import { APP_URL } from "./app-url";
@@ -57,6 +70,9 @@ export async function subscribeToCreatorAction(input: {
   const creator = plan.creator;
   // Stripe enum is the base interval; the full cadence lives on planPrice.
   const baseInterval = planPrice.interval === "year" ? "year" : "month";
+  const periodMonths = cadenceMonths(planPrice.interval, planPrice.intervalCount);
+  // One clock reading for the whole request: the sale is on or off for all of it.
+  const now = new Date();
 
   const useStripe = !BYPASS_PAYMENTS && creatorIsLive(creator);
 
@@ -72,11 +88,16 @@ export async function subscribeToCreatorAction(input: {
       data: { status: "canceled", endedAt: new Date(), cancelAtPeriodEnd: false },
     });
 
-    const now = new Date();
     const periodEnd = new Date(now);
-    periodEnd.setMonth(
-      periodEnd.getMonth() + cadenceMonths(planPrice.interval, planPrice.intervalCount),
-    );
+    periodEnd.setMonth(periodEnd.getMonth() + periodMonths);
+    // Same rule the webhook applies to Stripe subscriptions.
+    const price = effectivePlanPrice(planPrice, now);
+    const discount = subscriberDiscount({
+      hasStripeDiscount: price.onSale,
+      metadata: saleSubscriptionMetadata(price),
+      start: now,
+      periodMonths,
+    });
 
     const sub = await db.subscription.create({
       data: {
@@ -87,6 +108,8 @@ export async function subscribeToCreatorAction(input: {
         status: "active",
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd,
+        discountCents: discount.discountCents,
+        discountEndsAt: discount.discountEndsAt,
       },
     });
 
@@ -107,14 +130,31 @@ export async function subscribeToCreatorAction(input: {
   // Make sure the Plan's Prices exist on the connected account, then read back
   // the Stripe Price id for this cadence.
   await syncPlanToStripe(creator, plan);
-  const fresh = await db.planPrice.findUnique({ where: { id: planPrice.id } });
+  const fresh = await db.planPrice.findUnique({
+    where: { id: planPrice.id },
+    include: { plan: true },
+  });
   const priceId = fresh?.stripePriceId;
-  if (!priceId) throw new Error("Stripe price not configured for this billing option.");
+  if (!fresh || !priceId) throw new Error("Stripe price not configured for this billing option.");
+
+  // Sale: regular Price + coupon. Charge, coupon, and metadata all come from
+  // the same effective price so what's shown is what's billed.
+  const price = effectivePlanPrice(fresh, now);
+  const couponId =
+    price.onSale && price.terms
+      ? await ensurePlanPriceSaleCoupon(creator, fresh.plan, fresh, {
+          salePriceCents: price.priceCents,
+          terms: price.terms,
+        })
+      : null;
+  const expiresAt = couponId ? checkoutExpiresAt(price.saleEndsAt, now) : undefined;
 
   const session = await stripe.checkout.sessions.create(
     {
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
+      ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
+      ...(expiresAt ? { expires_at: expiresAt } : {}),
       customer_email: user.email,
       subscription_data: {
         application_fee_percent: PLATFORM_FEE_BPS / 100,
@@ -124,6 +164,7 @@ export async function subscribeToCreatorAction(input: {
           creatorId: plan.creatorId,
           planId: plan.id,
           planPriceId: planPrice.id,
+          ...(couponId ? saleSubscriptionMetadata(price) : {}),
         },
       },
       metadata: {
@@ -140,7 +181,11 @@ export async function subscribeToCreatorAction(input: {
     },
     {
       stripeAccount: creator.stripeAccountId!,
-      idempotencyKey: `sub_${user.id}_${planPrice.id}_${dayBucket()}`,
+      // Includes the coupon and expiry: Stripe rejects a reused key whose
+      // params differ, e.g. a double click straddling a sale's start.
+      idempotencyKey: `sub_${user.id}_${planPrice.id}_${dayBucket()}_${couponId ?? "list"}${
+        expiresAt ? `_${expiresAt}` : ""
+      }`,
     },
   );
 
@@ -177,6 +222,8 @@ export async function purchaseCourseAction(courseId: string): Promise<PurchaseRe
   if (existing) return { purchaseId: existing.id };
 
   const useStripe = !BYPASS_PAYMENTS && creatorIsLive(course.creator);
+  const now = new Date();
+  const price = effectivePrice(course, now);
 
   // ────────────────────────────── Bypass path
   if (!useStripe) {
@@ -184,7 +231,7 @@ export async function purchaseCourseAction(courseId: string): Promise<PurchaseRe
       data: {
         userId: user.id,
         courseId,
-        amountCents: course.priceCents,
+        amountCents: price.priceCents,
         currency: course.currency,
       },
     });
@@ -203,14 +250,25 @@ export async function purchaseCourseAction(courseId: string): Promise<PurchaseRe
   const syncResult = await syncCourseToStripe(course.creator, course);
   const priceId = syncResult?.priceId ?? course.stripePriceId;
   if (!priceId) throw new Error("Stripe price not configured for this course.");
+  const productId = syncResult?.productId ?? course.stripeProductId;
+  if (price.onSale && !productId) throw new Error("Stripe product not configured for this course.");
+
+  const couponId =
+    price.onSale && productId
+      ? await ensureCourseSaleCoupon(course.creator, course, productId, price.priceCents)
+      : null;
+  const expiresAt = couponId ? checkoutExpiresAt(price.saleEndsAt, now) : undefined;
 
   const session = await stripe.checkout.sessions.create(
     {
       mode: "payment",
       line_items: [{ price: priceId, quantity: 1 }],
+      ...(couponId ? { discounts: [{ coupon: couponId }] } : {}),
+      ...(expiresAt ? { expires_at: expiresAt } : {}),
       customer_email: user.email,
       payment_intent_data: {
-        application_fee_amount: Math.round((course.priceCents * PLATFORM_FEE_BPS) / 10_000),
+        // Fee on what the buyer actually pays (the sale price during a sale).
+        application_fee_amount: applicationFeeAmount(price.priceCents),
         metadata: {
           userId: user.id,
           creatorId: course.creatorId,
@@ -228,7 +286,9 @@ export async function purchaseCourseAction(courseId: string): Promise<PurchaseRe
     },
     {
       stripeAccount: course.creator.stripeAccountId!,
-      idempotencyKey: `course_${user.id}_${course.id}_${dayBucket()}`,
+      idempotencyKey: `course_${user.id}_${course.id}_${dayBucket()}_${couponId ?? "list"}${
+        expiresAt ? `_${expiresAt}` : ""
+      }`,
     },
   );
 

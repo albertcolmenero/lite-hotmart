@@ -159,3 +159,128 @@ export function validateSale(
 
   return errors;
 }
+
+// ---------------------------------------------------------------- Stripe coupon
+
+/**
+ * The Stripe coupon that turns the regular Price into the sale price, plus a
+ * fingerprint of its inputs. The coupon is recreated whenever the fingerprint
+ * changes (Stripe coupons are immutable).
+ *
+ * Duration: one-time items and "1 billing period" use `once`; N periods use
+ * `repeating` for N × months-per-period; `forever` stays forever.
+ */
+export type SaleCouponSpec = {
+  params: {
+    name: string;
+    amount_off: number;
+    currency: string;
+    duration: "once" | "repeating" | "forever";
+    duration_in_months?: number;
+    redeem_by?: number;
+    applies_to: { products: string[] };
+  };
+  fingerprint: string;
+};
+
+export function saleCouponSpec(input: {
+  listPriceCents: number;
+  salePriceCents: number;
+  currency: string;
+  productId: string;
+  saleEndsAt: Date | null;
+  /** null for one-time items (courses). */
+  terms: SaleTerms | null;
+  /** Months per billing period of the cadence (plans only). */
+  periodMonths?: number;
+}): SaleCouponSpec {
+  let duration: SaleCouponSpec["params"]["duration"] = "once";
+  let durationInMonths: number | undefined;
+  if (input.terms?.kind === "forever") duration = "forever";
+  else if (input.terms?.kind === "periods" && input.terms.periods > 1) {
+    if (!input.periodMonths || input.periodMonths < 1) {
+      throw new Error("periodMonths is required for a multi-period plan sale");
+    }
+    duration = "repeating";
+    durationInMonths = input.terms.periods * input.periodMonths;
+  }
+
+  // Built in a fixed key order so the fingerprint is stable.
+  const params: SaleCouponSpec["params"] = {
+    name: "Sale",
+    amount_off: input.listPriceCents - input.salePriceCents,
+    currency: input.currency.toLowerCase(),
+    duration,
+    ...(durationInMonths ? { duration_in_months: durationInMonths } : {}),
+    ...(input.saleEndsAt ? { redeem_by: Math.floor(input.saleEndsAt.getTime() / 1000) } : {}),
+    applies_to: { products: [input.productId] },
+  };
+  return { params, fingerprint: JSON.stringify(params) };
+}
+
+/** Stripe allows a Checkout Session to live 30 minutes to 24 hours. */
+const CHECKOUT_MIN_MS = 31 * 60_000; // 1 minute margin over Stripe's floor
+const CHECKOUT_MAX_MS = 24 * 3_600_000;
+
+/**
+ * `expires_at` (epoch seconds) for a Checkout Session during a sale that ends,
+ * so a page opened during the sale can't be paid at the sale price much later.
+ * Undefined when there's nothing to bound (no sale, or no end date). If the
+ * sale ends in under 31 minutes, the session still lives 31 minutes: Stripe's
+ * minimum sets that grace.
+ */
+export function checkoutExpiresAt(saleEndsAt: Date | null, now: Date): number | undefined {
+  if (!saleEndsAt) return undefined;
+  const ms = Math.min(
+    now.getTime() + CHECKOUT_MAX_MS,
+    Math.max(now.getTime() + CHECKOUT_MIN_MS, saleEndsAt.getTime()),
+  );
+  return Math.floor(ms / 1000);
+}
+
+// ---------------------------------------------------------------- subscriber discount
+
+/** Metadata Checkout puts on a sale subscription so the webhook can record it. */
+export function saleSubscriptionMetadata(
+  price: PlanEffectivePrice,
+): Record<string, string> {
+  if (!price.onSale || !price.terms || price.listPriceCents == null) return {};
+  return {
+    discountCents: String(price.listPriceCents - price.priceCents),
+    discountPeriods: price.terms.kind === "forever" ? "forever" : String(price.terms.periods),
+  };
+}
+
+/** Add calendar months in UTC, clamping to the last day of a shorter month. */
+export function addMonthsUTC(date: Date, months: number): Date {
+  const d = new Date(date.getTime());
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return d;
+}
+
+/**
+ * The discount a subscriber pays under, from what Checkout recorded in the
+ * subscription metadata. Anchored on Stripe's fixed `start` so replays agree.
+ * No discount on the Stripe subscription (ended, or removed by the creator)
+ * means none here; a discount we didn't create (no metadata) is unknown → none.
+ */
+export function subscriberDiscount(input: {
+  hasStripeDiscount: boolean;
+  metadata: Record<string, string> | null | undefined;
+  start: Date;
+  periodMonths: number;
+}): { discountCents: number | null; discountEndsAt: Date | null } {
+  const none = { discountCents: null, discountEndsAt: null };
+  if (!input.hasStripeDiscount) return none;
+  const cents = Number(input.metadata?.discountCents);
+  if (!Number.isInteger(cents) || cents <= 0) return none;
+  const periods = input.metadata?.discountPeriods;
+  if (periods === "forever") return { discountCents: cents, discountEndsAt: null };
+  const n = Number(periods);
+  if (!Number.isInteger(n) || n < 1) return none;
+  return { discountCents: cents, discountEndsAt: addMonthsUTC(input.start, n * input.periodMonths) };
+}

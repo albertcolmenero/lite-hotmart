@@ -37,12 +37,41 @@ All new columns are nullable (migration `1_sale_prices`):
 |---|---|---|
 | 0 | Webhook finds the right billing option for subscribers on archived prices; test harness | Done (branch `fix/subscription-renewal-price-lookup`) |
 | 1 | Baseline migration, sale columns, `pricing.ts` and tests | Done |
-| 2 | Checkout + Stripe coupon sync; course fee from the price charged; Checkout expires when the sale ends; webhook records the discount | Next |
+| 2 | Checkout + Stripe coupon sync; course fee from the price charged; Checkout expires when the sale ends; webhook records the discount | Done |
 | 3 | Studio: sale fields on the plan and course forms | |
 | 4 | Storefront: strike-through, "then €X" wording, "Sale ends" | |
 | 5 | Revenue figures use the discount | |
 
-To check in Stripe test mode during phase 2:
+## Checkout behaviour (phase 2)
+
+- Checkout always uses the regular Stripe Price. During a sale it adds
+  `discounts: [{ coupon }]`, using a coupon on the creator's account from
+  `ensurePlanPriceSaleCoupon` / `ensureCourseSaleCoupon` in `stripe-sync.ts`.
+- The coupon is created only when its inputs change: regular price, sale price,
+  currency, duration, end date, or product. The coupon id and inputs are stored
+  on the row. A Stripe idempotency key built from those inputs makes
+  simultaneous checkouts share one coupon.
+- Old coupons are **not deleted**. Buyers can't redeem them without our Checkout,
+  because we create no promotion codes. `redeem_by` expires them with the sale.
+  Deleting one could break a Checkout page still open at the sale price.
+- Buyers see the coupon name "Sale" on Stripe Checkout and on invoices.
+- A Checkout Session opened during a sale expires when the sale ends. Stripe
+  needs at least 30 minutes, so in a sale's final half hour a buyer gets up to
+  31 minutes at the sale price.
+- The course platform fee is 8% of what the buyer pays: the sale price during a sale.
+- Checkout puts `discountCents` and `discountPeriods` on the subscription's
+  metadata. The webhook stores them on `Subscription`, with the end date
+  counted from Stripe's `start_date`, so replaying an event writes the same
+  value. When the Stripe subscription has no discount left, ours is cleared.
+  A coupon a creator adds by hand in Stripe has no metadata, so it isn't
+  recorded.
+- The test-mode path without Stripe (`BYPASS_PAYMENTS`, or a creator not yet on
+  Stripe) records the same discount and charges the sale price.
+
+Tests: `tests/checkout-sale.test.ts` (checkout against the real test database,
+with Stripe faked), `tests/pricing.test.ts`.
+
+Still to check in Stripe test mode (not possible from the test suite):
 - Does a limited coupon's window start at signup, so a trial uses up part of it?
 - Does "first 3 months" give exactly three discounted invoices?
 

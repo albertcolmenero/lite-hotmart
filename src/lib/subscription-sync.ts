@@ -15,6 +15,8 @@ import type { BillingInterval, SubscriptionStatus } from "@prisma/client";
 import { db } from "./db";
 import { stripe } from "./stripe";
 import { log } from "./log";
+import { cadenceMonths } from "./billing-cadences";
+import { subscriberDiscount } from "./pricing";
 
 /** Stripe has statuses our enum doesn't; map them instead of casting. */
 export const STRIPE_STATUS_MAP: Record<Stripe.Subscription.Status, SubscriptionStatus> = {
@@ -130,6 +132,14 @@ export async function syncSubscriptionFromStripe(
   const periodStart = new Date(item.current_period_start * 1000);
   const periodEnd = new Date(item.current_period_end * 1000);
   const isActive = status === "active" || status === "trialing";
+  // Sale discount: amount + periods come from the metadata Checkout set; the
+  // end is anchored on Stripe's fixed start_date so replays write the same value.
+  const { discountCents, discountEndsAt } = subscriberDiscount({
+    hasStripeDiscount: (sub.discounts?.length ?? 0) > 0,
+    metadata: sub.metadata,
+    start: new Date(sub.start_date * 1000),
+    periodMonths: cadenceMonths(planPrice.interval, planPrice.intervalCount),
+  });
 
   if (opts.dryRun) {
     return { kind: "would_sync", userId, planPriceId: planPrice.id, status, periodEnd };
@@ -147,6 +157,8 @@ export async function syncSubscriptionFromStripe(
         currentPeriodEnd: periodEnd,
         cancelAtPeriodEnd: sub.cancel_at_period_end,
         endedAt: sub.ended_at ? new Date(sub.ended_at * 1000) : null,
+        discountCents,
+        discountEndsAt,
       },
       create: {
         userId,
@@ -160,6 +172,8 @@ export async function syncSubscriptionFromStripe(
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
         cancelAtPeriodEnd: sub.cancel_at_period_end,
+        discountCents,
+        discountEndsAt,
       },
     });
 

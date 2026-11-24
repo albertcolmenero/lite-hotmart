@@ -11,12 +11,18 @@
  *
  * - archiveStripePlan(creator, plan) / archiveStripeCourse(creator, course):
  *   Archive Product + Prices when a plan/course is deleted or deactivated.
+ *
+ * - ensurePlanPriceSaleCoupon / ensureCourseSaleCoupon:
+ *   Make sure the connected account has the coupon for an active sale.
  */
 
+import { createHash } from "node:crypto";
 import Stripe from "stripe";
 import { stripe } from "./stripe";
 import { db } from "./db";
 import type { Creator, Plan, Course, PlanPrice } from "@prisma/client";
+import { cadenceMonths } from "./billing-cadences";
+import { saleCouponSpec, type SaleCouponSpec, type SaleTerms } from "./pricing";
 
 type SyncResult = {
   productId: string | null;
@@ -232,4 +238,95 @@ export async function archiveStripeCourse(creator: Creator, course: Course): Pro
       .update(course.stripeProductId, { active: false }, opts)
       .catch(() => undefined);
   }
+}
+
+// ---------------------------------------------------------------- Sale coupons
+
+/**
+ * Return a coupon id matching `spec` on the connected account, creating one
+ * only when the stored fingerprint differs. The idempotency key is derived
+ * from the item and fingerprint, so concurrent checkouts share one coupon.
+ *
+ * Superseded coupons are left in place, not deleted: Stripe coupons can't be
+ * redeemed without our Checkout (we create no promotion codes), `redeem_by`
+ * expires them with the sale, and deleting one could break a Checkout Session
+ * still open at the sale price.
+ */
+async function reconcileSaleCoupon(
+  creator: Creator,
+  itemKey: string,
+  stored: { couponId: string | null; fingerprint: string | null },
+  spec: SaleCouponSpec,
+): Promise<{ couponId: string; fingerprint: string; changed: boolean }> {
+  if (stored.couponId && stored.fingerprint === spec.fingerprint) {
+    return { couponId: stored.couponId, fingerprint: spec.fingerprint, changed: false };
+  }
+  const digest = createHash("sha256").update(spec.fingerprint).digest("hex").slice(0, 32);
+  const coupon = await stripe.coupons.create(spec.params, {
+    ...reqOptions(creator),
+    idempotencyKey: `coupon_${itemKey}_${digest}`,
+  });
+  return { couponId: coupon.id, fingerprint: spec.fingerprint, changed: true };
+}
+
+/** Coupon for a plan cadence's active sale. Caller has checked the sale is on. */
+export async function ensurePlanPriceSaleCoupon(
+  creator: Creator,
+  plan: Plan,
+  pp: PlanPrice,
+  sale: { salePriceCents: number; terms: SaleTerms },
+): Promise<string> {
+  if (!plan.stripeProductId) throw new Error("plan has no Stripe product");
+  const spec = saleCouponSpec({
+    listPriceCents: pp.priceCents,
+    salePriceCents: sale.salePriceCents,
+    currency: plan.currency,
+    productId: plan.stripeProductId,
+    saleEndsAt: pp.saleEndsAt,
+    terms: sale.terms,
+    periodMonths: cadenceMonths(pp.interval, pp.intervalCount),
+  });
+  const res = await reconcileSaleCoupon(
+    creator,
+    `pp_${pp.id}`,
+    { couponId: pp.saleStripeCouponId, fingerprint: pp.saleCouponFingerprint },
+    spec,
+  );
+  if (res.changed) {
+    await db.planPrice.update({
+      where: { id: pp.id },
+      data: { saleStripeCouponId: res.couponId, saleCouponFingerprint: res.fingerprint },
+    });
+  }
+  return res.couponId;
+}
+
+/** Coupon for a course's active sale. Caller has checked the sale is on. */
+export async function ensureCourseSaleCoupon(
+  creator: Creator,
+  course: Course,
+  productId: string,
+  salePriceCents: number,
+): Promise<string> {
+  const spec = saleCouponSpec({
+    listPriceCents: course.priceCents,
+    salePriceCents,
+    currency: course.currency,
+    productId,
+    saleEndsAt: course.saleEndsAt,
+    terms: null,
+  });
+  const res = await reconcileSaleCoupon(
+    creator,
+    `course_${course.id}`,
+    { couponId: course.saleStripeCouponId, fingerprint: course.saleCouponFingerprint },
+    spec,
+  );
+  if (res.changed) {
+    await db.course.update({
+      where: { id: course.id },
+      data: { saleStripeCouponId: res.couponId, saleCouponFingerprint: res.fingerprint },
+    });
+  }
+  return res.couponId;
 }
