@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { getOrCreateDbUser } from "@/lib/auth";
 import { hasActiveSubscription } from "@/lib/entitlements";
 import { LandingPlanCard, type LandingPlanCardProps } from "./_landing-plan-card";
-import { toPlanDisplay } from "@/lib/plan-display";
+import { toPlanDisplay, coursePriceDisplay } from "@/lib/plan-display";
 import { BYPASS_PAYMENTS } from "@/lib/dev-auth";
 import { ClassCard, SeriesCard, CourseCard } from "@/components/cards";
 import { HomeContent } from "@/components/home-content-renderer";
@@ -238,7 +238,7 @@ export default async function CreatorLanding({
                       title: c.title,
                       eyebrow: c.eyebrow,
                       coverUrl: c.coverUrl,
-                      priceCents: c.priceCents,
+                      ...coursePriceDisplay(c),
                       currency: c.currency,
                     }}
                     category={joinCategoryNames(c.categories)}

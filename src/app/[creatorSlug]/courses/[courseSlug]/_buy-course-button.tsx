@@ -5,10 +5,13 @@ import { useRouter } from "next/navigation";
 import { PaywallModal } from "@/components/paywall-modal";
 import type { PlanDisplay } from "@/lib/plan-display";
 import { formatCents } from "@/lib/utils";
+import { SaleEndsNote } from "@/components/sale-price";
 
 export function BuyCourseButton({
   courseId,
   priceCents,
+  listPriceCents,
+  saleEndsAt,
   currency,
   subscribed,
   signedIn,
@@ -16,7 +19,11 @@ export function BuyCourseButton({
   plan,
 }: {
   courseId: string;
+  /** Price paid now (the sale price during a sale). */
   priceCents: number;
+  /** Regular price while on sale. */
+  listPriceCents: number | null;
+  saleEndsAt: string | null;
   currency: string;
   subscribed: boolean;
   signedIn: boolean;
@@ -67,6 +74,17 @@ export function BuyCourseButton({
       >
         {subscribed ? `Buy now — ${priceLabel}` : `Subscribe to unlock · ${priceLabel} after`}
       </button>
+      {listPriceCents != null ? (
+        <p className="mt-2 text-sm text-center" style={{ color: "var(--lichen)" }}>
+          On sale from <s>{formatCents(listPriceCents, currency)}</s>
+          {saleEndsAt ? (
+            <>
+              {" · "}
+              <SaleEndsNote iso={saleEndsAt} />
+            </>
+          ) : null}
+        </p>
+      ) : null}
       {error ? (
         <p className="mt-2 text-sm" style={{ color: "var(--rust)" }}>
           {error}

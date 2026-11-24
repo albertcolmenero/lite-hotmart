@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { coursePriceDisplay } from "@/lib/plan-display";
 import { db } from "@/lib/db";
 import { getOrCreateDbUser } from "@/lib/auth";
 import { hasActiveSubscription } from "@/lib/entitlements";
@@ -62,7 +63,7 @@ export default async function CoursesListPage({
                   title: c.title,
                   eyebrow: c.eyebrow,
                   coverUrl: c.coverUrl,
-                  priceCents: c.priceCents,
+                  ...coursePriceDisplay(c),
                   currency: c.currency,
                 }}
               />

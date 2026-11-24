@@ -9,8 +9,8 @@ import {
   hasCoursePurchase,
 } from "@/lib/entitlements";
 import { youtubeThumbnail } from "@/components/video-embed";
-import { toPlanDisplay } from "@/lib/plan-display";
-import { formatCents } from "@/lib/utils";
+import { coursePriceDisplay, toPlanDisplay } from "@/lib/plan-display";
+import { SalePrice } from "@/components/sale-price";
 import { BuyCourseButton } from "./_buy-course-button";
 
 export default async function CourseDetailPage({
@@ -30,6 +30,7 @@ export default async function CourseDetailPage({
     include: { classes: { orderBy: { position: "asc" }, include: { classRef: true } } },
   });
   if (!course || !course.published) notFound();
+  const price = coursePriceDisplay(course);
 
   const viewer = await getOrCreateDbUser();
   const isOwner = viewer?.id === creator.userId;
@@ -117,7 +118,9 @@ export default async function CourseDetailPage({
         ) : (
           <BuyCourseButton
             courseId={course.id}
-            priceCents={course.priceCents}
+            priceCents={price.priceCents}
+            listPriceCents={price.listPriceCents}
+            saleEndsAt={price.saleEndsAt}
             currency={course.currency}
             subscribed={subscribed}
             signedIn={Boolean(viewer)}
@@ -221,7 +224,12 @@ export default async function CourseDetailPage({
 
         {!access.allowed ? (
           <div className="mt-4 text-sm text-center" style={{ color: "var(--lichen)" }}>
-            Price · {formatCents(course.priceCents, course.currency)}
+            Price ·{" "}
+            <SalePrice
+              priceCents={price.priceCents}
+              listPriceCents={price.listPriceCents}
+              currency={course.currency}
+            />
           </div>
         ) : null}
       </div>

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { formatCents } from "@/lib/utils";
-import { type PlanDisplay, savingsVsMonthly } from "@/lib/plan-display";
+import { type PlanDisplay, saleTermsText, savingsVsMonthly } from "@/lib/plan-display";
+import { SaleEndsNote, SalePrice } from "@/components/sale-price";
 
 export type LandingPlanCardProps = {
   creatorId: string;
@@ -33,6 +33,9 @@ export function LandingPlanCard({
     const s = savingsVsMonthly(plan.options, o);
     return s != null && (best == null || s > best) ? s : best;
   }, null);
+  const onSale = plan.options.filter((o) => o.listPriceCents != null);
+  // Soonest end among options on sale (all share one window when set in the studio).
+  const saleEndsAt = onSale.map((o) => o.saleEndsAt).filter((e): e is string => e != null).sort()[0] ?? null;
 
   const handle = (planPriceId: string) => {
     if (!signedIn) {
@@ -72,7 +75,11 @@ export function LandingPlanCard({
         }}
       >
         <div className="text-label">Choose your plan</div>
-        {bestSavings != null ? (
+        {onSale.length > 0 ? (
+          <span className="chip chip--accent">
+            Sale{saleEndsAt ? <> · <SaleEndsNote iso={saleEndsAt} prefix="ends" /></> : null}
+          </span>
+        ) : bestSavings != null ? (
           <span className="chip chip--accent">Save up to {bestSavings}%</span>
         ) : null}
       </div>
@@ -81,6 +88,7 @@ export function LandingPlanCard({
         {plan.options.map((opt, i) => {
           const sv = savingsVsMonthly(plan.options, opt);
           const featured = plan.options.length > 1 && i === plan.options.length - 1;
+          const terms = saleTermsText(opt, plan.currency);
           return (
             <PlanRow
               key={opt.planPriceId}
@@ -88,9 +96,21 @@ export function LandingPlanCard({
               disabled={!billingReady}
               label={opt.label}
               sublabel={
-                sv ? `${sv}% off vs monthly` : opt.months === 1 ? "Cancel anytime" : "Best value"
+                terms
+                  ? `Sale price ${terms}`
+                  : sv
+                    ? `${sv}% off vs monthly`
+                    : opt.months === 1
+                      ? "Cancel anytime"
+                      : "Best value"
               }
-              price={formatCents(opt.priceCents, plan.currency)}
+              price={
+                <SalePrice
+                  priceCents={opt.priceCents}
+                  listPriceCents={opt.listPriceCents}
+                  currency={plan.currency}
+                />
+              }
               cadence={opt.note}
               onClick={() => handle(opt.planPriceId)}
               accent={featured ? accentColor : undefined}
@@ -147,7 +167,7 @@ function PlanRow({
   disabled?: boolean;
   label: string;
   sublabel: string;
-  price: string;
+  price: ReactNode;
   cadence: string;
   onClick: () => void;
   accent?: string;

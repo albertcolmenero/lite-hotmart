@@ -123,6 +123,7 @@ Two recurring visual signatures across both modes:
 | `Modal` | Paper background + max-w 480 + scale-in via `ease-editorial` | Always announces with display serif title |
 | `Input` | Underline-only on focus (Ember underline 2px) | No bordered box. Hairline divider below the label. |
 | `MoneyInput` (`components/studio-form.tsx`) | `.input` box with the currency symbol prefix | Every studio price field. `size="lg"` for plan pricing, `md` elsewhere. |
+| `SalePrice` / `SaleEndsNote` (`components/sale-price.tsx`) | Regular price crossed out at 0.7em / 50% opacity, then the sale price; end time in the visitor's own time zone | Every storefront price slot. Inherits the slot's typography. |
 | Sale fields (`components/sale-fields.tsx`) | `SalePriceInput`, `SaleWindowInputs` (local date/time, sent as UTC), `SaleDurationInputs`, `SaleValidity` | `SaleValidity` checks the form with `lib/pricing` rules and blocks submit via native field messages. Used on the plan and course forms. |
 
 ## Accessibility floor

@@ -39,7 +39,7 @@ All new columns are nullable (migration `1_sale_prices`):
 | 1 | Baseline migration, sale columns, `pricing.ts` and tests | Done |
 | 2 | Checkout + Stripe coupon sync; course fee from the price charged; Checkout expires when the sale ends; webhook records the discount | Done |
 | 3 | Studio: sale fields on the plan and course forms | Done |
-| 4 | Storefront: strike-through, "then €X" wording, "Sale ends" | |
+| 4 | Storefront: strike-through, "then €X" wording, "Sale ends" | Done |
 | 5 | Revenue figures use the discount | |
 
 ## Checkout behaviour (phase 2)
@@ -91,6 +91,29 @@ with Stripe faked), `tests/pricing.test.ts`.
     symbol until the plan is saved.
   - An end date that passes while the page is open is rejected by the server
     (error page) rather than in the browser.
+
+## Storefront (phase 4)
+
+- `toPlanDisplay` and `coursePriceDisplay` (`lib/plan-display.ts`) give each
+  price as of render time, using the same `pricing.ts` rules as Checkout: the
+  price paid now, the regular price while on sale, the sale end, and the terms.
+  Pages and components never work out sale prices themselves.
+- `saleTermsText` gives the wording buyers see before subscribing, e.g.
+  "for your first 3 months, then $15.00/mo", or for a forever sale "and keep
+  this price while you're subscribed". The price after the sale is always shown.
+- `components/sale-price.tsx`: `SalePrice` shows the regular price crossed
+  out, then the sale price. `SaleEndsNote` shows the end in the visitor's own
+  time zone; it renders nothing on the server and fills in after hydration.
+- Where a sale shows: the landing plan card (a "Sale · ends …" chip replaces
+  "Save up to X%"), the paywall modal, course cards (landing, courses, category,
+  favourites), and the course page (buy button note and price line).
+- "Save X% vs monthly" is worked out from the prices people pay now, so a
+  monthly sale can shrink or remove the badge on longer billing options.
+- Every storefront page reads the request headers or the signed-in viewer, so
+  pages render on each request: a scheduled sale appears and ends on time
+  with no cache to clear.
+- Studio pages that show plan prices (dashboard, publish) also show the price
+  paid now.
 
 Still to check in Stripe test mode (not possible from the test suite):
 - Does a limited coupon's window start at signup, so a trial uses up part of it?

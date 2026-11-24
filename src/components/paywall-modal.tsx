@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Lock, Sparkles, Smartphone, X } from "lucide-react";
-import { formatCents } from "@/lib/utils";
-import { type PlanDisplay, savingsVsMonthly } from "@/lib/plan-display";
+import { type PlanDisplay, saleTermsText, savingsVsMonthly } from "@/lib/plan-display";
+import { SalePrice } from "@/components/sale-price";
 
 export type PaywallProps = {
   open: boolean;
@@ -160,15 +160,28 @@ export function PaywallModal({
                 {plan.options.map((opt, i) => {
                   const sv = savingsVsMonthly(plan.options, opt);
                   const featured = plan.options.length > 1 && i === plan.options.length - 1;
+                  const terms = saleTermsText(opt, plan.currency);
                   return (
                     <PlanButton
                       key={opt.planPriceId}
                       pending={pending}
                       label={opt.label}
                       sublabel={
-                        sv ? `Save ${sv}%` : opt.months === 1 ? "Cancel anytime" : "Best value"
+                        terms
+                          ? `Sale ${terms}`
+                          : sv
+                            ? `Save ${sv}%`
+                            : opt.months === 1
+                              ? "Cancel anytime"
+                              : "Best value"
                       }
-                      price={formatCents(opt.priceCents, plan.currency)}
+                      price={
+                        <SalePrice
+                          priceCents={opt.priceCents}
+                          listPriceCents={opt.listPriceCents}
+                          currency={plan.currency}
+                        />
+                      }
                       cadence={opt.shortCadence}
                       onClick={() => handleSubscribe(opt.planPriceId)}
                       featured={featured}
@@ -264,7 +277,7 @@ function PlanButton({
   pending: boolean;
   label: string;
   sublabel: string;
-  price: string;
+  price: ReactNode;
   cadence: string;
   onClick: () => void;
   featured?: boolean;

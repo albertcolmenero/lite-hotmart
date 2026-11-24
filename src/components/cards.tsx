@@ -4,9 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { Layers, Play, GraduationCap, Lock } from "lucide-react";
 import { youtubeThumbnail } from "./video-embed";
-import { formatCents } from "@/lib/utils";
 import { PaywallModal } from "./paywall-modal";
 import type { PlanDisplay } from "@/lib/plan-display";
+import { SalePrice } from "./sale-price";
 
 export type CardPaywall = {
   creatorId: string;
@@ -243,7 +243,10 @@ export function CourseCard({
     title: string;
     eyebrow: string | null;
     coverUrl: string | null;
+    /** Price paid now, from coursePriceDisplay(). */
     priceCents: number;
+    /** Regular price while on sale. */
+    listPriceCents: number | null;
     currency: string;
   };
   category?: string;
@@ -311,10 +314,14 @@ export function CourseCard({
               color: "var(--ink)",
             }}
           >
-            {formatCents(course.priceCents, course.currency)}
+            <SalePrice
+              priceCents={course.priceCents}
+              listPriceCents={course.listPriceCents}
+              currency={course.currency}
+            />
           </span>
           <span className="text-mono-sm" style={{ color: "var(--lichen)" }}>
-            one-time
+            {course.listPriceCents != null ? "sale · one-time" : "one-time"}
           </span>
         </div>
       </div>

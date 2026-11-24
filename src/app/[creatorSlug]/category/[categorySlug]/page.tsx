@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { getOrCreateDbUser } from "@/lib/auth";
 import { hasActiveSubscription } from "@/lib/entitlements";
-import { toPlanDisplay } from "@/lib/plan-display";
+import { toPlanDisplay, coursePriceDisplay } from "@/lib/plan-display";
 import { ClassCard, SeriesCard, CourseCard } from "@/components/cards";
 
 export default async function CategoryPage({
@@ -164,7 +164,7 @@ export default async function CategoryPage({
                   title: c.title,
                   eyebrow: c.eyebrow,
                   coverUrl: c.coverUrl,
-                  priceCents: c.priceCents,
+                  ...coursePriceDisplay(c),
                   currency: c.currency,
                 }}
               />

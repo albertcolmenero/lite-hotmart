@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getOrCreateDbUser } from "@/lib/auth";
 import { hasActiveSubscription } from "@/lib/entitlements";
-import { toPlanDisplay } from "@/lib/plan-display";
+import { toPlanDisplay, coursePriceDisplay } from "@/lib/plan-display";
 import { ClassCard, SeriesCard, CourseCard } from "@/components/cards";
 import { EmptyState } from "@/components/empty-state";
 import { BookmarkRibbon } from "@/components/illustrations";
@@ -136,7 +136,7 @@ export default async function FavoritesPage({
                   title: f.course!.title,
                   eyebrow: f.course!.eyebrow,
                   coverUrl: f.course!.coverUrl,
-                  priceCents: f.course!.priceCents,
+                  ...coursePriceDisplay(f.course!),
                   currency: f.course!.currency,
                 }}
               />
