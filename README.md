@@ -96,7 +96,7 @@ Open http://localhost:3000.
 - `pnpm build` — production build
 - `pnpm start` — run production build
 - `pnpm prisma studio` — explore the database
-- `pnpm prisma db push` — apply schema changes (dev)
+- `pnpm prisma db push` — sync a throwaway local database only, never a shared one
 - `pnpm prisma migrate dev` — create and apply a migration
 - `pnpm test` — run the flow tests (needs a local test database, see below)
 
@@ -113,9 +113,12 @@ echo 'TEST_DATABASE_URL=postgresql://localhost:5432/lite_hotmart_test' > .env.te
 pnpm test
 ```
 
-Each run pushes the current schema to the test database (non-destructive) and
-truncates tables between tests. If a schema change can't be pushed without data
-loss, drop and recreate the test database: `dropdb lite_hotmart_test && createdb lite_hotmart_test`.
+Each run applies `prisma/migrations` to the test database, fails if
+`schema.prisma` has changes no migration covers, and truncates tables between
+tests. A test database first made with `db push` (Prisma error P3005) needs
+recreating: `dropdb lite_hotmart_test && createdb lite_hotmart_test`.
+
+Schema changes ship as versioned migrations. See [docs/sale-prices.md → Migrations](docs/sale-prices.md#migrations).
 
 ## Paywall model
 

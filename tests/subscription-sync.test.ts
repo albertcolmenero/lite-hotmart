@@ -16,8 +16,10 @@ const DAY = 86_400;
 const T0 = 1_790_000_000; // fixed epoch seconds — no Date.now() anchors
 
 async function truncateAll() {
+  // Keep Prisma's migration history, or the next run re-applies 0_init.
   const rows = await db.$queryRaw<{ tablename: string }[]>`
-    SELECT tablename FROM pg_tables WHERE schemaname = 'public'`;
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
   if (rows.length === 0) return;
   const list = rows.map((r) => `"public"."${r.tablename}"`).join(", ");
   await db.$executeRawUnsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);

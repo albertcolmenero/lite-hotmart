@@ -106,6 +106,19 @@ model PlanPrice {
   // Stripe Price id on the connected account (recurring interval + interval_count).
   stripePriceId String?
   active        Boolean  @default(true)
+  // Sale (all nullable; no sale when salePriceCents is null). Active while
+  // saleStartsAt <= now < saleEndsAt (either bound optional); see src/lib/pricing.ts.
+  // Applied at Checkout as a Stripe coupon on the connected account.
+  salePriceCents        Int?
+  saleStartsAt          DateTime?
+  saleEndsAt            DateTime?
+  // How long a subscriber keeps the sale price: `periods` x salePeriods billing
+  // periods, or `forever`.
+  saleDuration          SaleDuration?
+  salePeriods           Int?
+  saleStripeCouponId    String?
+  // Inputs the coupon was built from; a mismatch means recreate the coupon.
+  saleCouponFingerprint String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -113,6 +126,12 @@ model PlanPrice {
 
   @@unique([planId, interval, intervalCount])
   @@index([planId])
+}
+
+/// How long a subscriber keeps a sale price.
+enum SaleDuration {
+  periods
+  forever
 }
 
 enum VideoProvider {
@@ -207,6 +226,12 @@ model Course {
   // Future Stripe wiring
   stripeProductId String?
   stripePriceId   String?
+  // Sale (all nullable; see PlanPrice). One-time purchase, so no duration.
+  salePriceCents        Int?
+  saleStartsAt          DateTime?
+  saleEndsAt            DateTime?
+  saleStripeCouponId    String?
+  saleCouponFingerprint String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -338,6 +363,10 @@ model Subscription {
   currentPeriodStart   DateTime
   currentPeriodEnd     DateTime
   cancelAtPeriodEnd    Boolean            @default(false)
+  // Sale discount the subscriber pays under (from Stripe's subscription
+  // discount). Null = none. discountEndsAt null with discountCents set = forever.
+  discountCents        Int?
+  discountEndsAt       DateTime?
   startedAt            DateTime           @default(now())
   endedAt              DateTime?
   createdAt            DateTime           @default(now())
