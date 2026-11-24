@@ -3,7 +3,7 @@ import { ArrowUpRight } from "lucide-react";
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatCents } from "@/lib/utils";
-import { cadenceMonths } from "@/lib/billing-cadences";
+import { mrrCents as computeMrrCents } from "@/lib/revenue";
 import { toPlanDisplay } from "@/lib/plan-display";
 
 export default async function StudioOverviewPage() {
@@ -32,13 +32,8 @@ export default async function StudioOverviewPage() {
     }),
   ]);
 
-  const mrrCents = activeSubs.reduce((acc, s) => {
-    const pp = s.planPrice;
-    if (pp) return acc + pp.priceCents / cadenceMonths(pp.interval, pp.intervalCount);
-    if (s.interval === "year" && s.plan.yearlyPriceCents) return acc + s.plan.yearlyPriceCents / 12;
-    if (s.interval === "month" && s.plan.monthlyPriceCents) return acc + s.plan.monthlyPriceCents;
-    return acc;
-  }, 0);
+  // What active subscribers pay now, sale discounts included.
+  const mrrCents = computeMrrCents(activeSubs, new Date());
 
   const planDisplay = toPlanDisplay(plan);
   const cheapest = planDisplay?.options[0];
@@ -56,7 +51,7 @@ export default async function StudioOverviewPage() {
         className="grid grid-cols-2 md:grid-cols-4 gap-px overflow-hidden card"
         style={{ background: "var(--bone)" }}
       >
-        <Stat label="MRR" value={formatCents(Math.round(mrrCents), creator.currency)} hint="monthly recurring" />
+        <Stat label="MRR" value={formatCents(mrrCents, creator.currency)} hint="monthly recurring" />
         <Stat label="Subscribers" value={String(activeSubs.length)} hint="active now" />
         <Stat
           label="Library"

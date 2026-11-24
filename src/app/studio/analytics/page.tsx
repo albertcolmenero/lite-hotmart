@@ -1,7 +1,7 @@
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatCents } from "@/lib/utils";
-import { cadenceMonths } from "@/lib/billing-cadences";
+import { mrrSeries } from "@/lib/revenue";
 import { Sparkline, RetentionRing } from "@/components/sparkline";
 import { EmptyState } from "@/components/empty-state";
 import { BarsRising } from "@/components/illustrations";
@@ -21,30 +21,8 @@ export default async function AnalyticsPage() {
     }),
   ]);
 
-  const days = 30;
-  const series: number[] = [];
-  const dayStart = (d: Date) => {
-    const x = new Date(d);
-    x.setHours(0, 0, 0, 0);
-    return x;
-  };
-  const today = dayStart(new Date());
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const mrr = subs.reduce((acc, s) => {
-      const start = dayStart(s.startedAt);
-      const end = s.endedAt ? dayStart(s.endedAt) : null;
-      const active = start <= d && (end == null || end > d);
-      if (!active) return acc;
-      const pp = s.planPrice;
-      if (pp) return acc + pp.priceCents / cadenceMonths(pp.interval, pp.intervalCount);
-      if (s.interval === "year" && s.plan.yearlyPriceCents) return acc + s.plan.yearlyPriceCents / 12;
-      if (s.interval === "month" && s.plan.monthlyPriceCents) return acc + s.plan.monthlyPriceCents;
-      return acc;
-    }, 0);
-    series.push(Math.round(mrr));
-  }
+  // Daily MRR, counting sale discounts while they applied.
+  const series = mrrSeries(subs, 30, new Date());
 
   const currentMRR = series[series.length - 1] ?? 0;
   const prevMRR = series[0] ?? 0;

@@ -40,7 +40,7 @@ All new columns are nullable (migration `1_sale_prices`):
 | 2 | Checkout + Stripe coupon sync; course fee from the price charged; Checkout expires when the sale ends; webhook records the discount | Done |
 | 3 | Studio: sale fields on the plan and course forms | Done |
 | 4 | Storefront: strike-through, "then €X" wording, "Sale ends" | Done |
-| 5 | Revenue figures use the discount | |
+| 5 | Revenue figures use the discount | Done |
 
 ## Checkout behaviour (phase 2)
 
@@ -114,6 +114,23 @@ with Stripe faked), `tests/pricing.test.ts`.
   with no cache to clear.
 - Studio pages that show plan prices (dashboard, publish) also show the price
   paid now.
+
+## Revenue (phase 5)
+
+- `lib/revenue.ts` is the one place that works out what a subscriber pays
+  (`subscriptionPeriodPrice`) and MRR (`mrrCents`, `mrrSeries`). The dashboard,
+  analytics and subscribers pages call it. Before this, two pages each had
+  their own copy of the MRR maths.
+- A discount counts until `discountEndsAt`, or for good when that is null. The
+  30-day series checks it at the start of each day, so a sale ending mid-month
+  shows as a step up in MRR.
+- With no discounts, the numbers are the same as before: checked against the
+  old page code on 500 random subscriptions.
+- The subscribers table shows the regular price crossed out while a
+  subscriber's discount lasts.
+- **Known limit (already true before sales):** a subscriber still on an old
+  price after the creator changed it is counted at the current price. We don't
+  store the old amount locally.
 
 Still to check in Stripe test mode (not possible from the test suite):
 - Does a limited coupon's window start at signup, so a trial uses up part of it?

@@ -1,7 +1,7 @@
 import { getCreatorForCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { formatCents } from "@/lib/utils";
-import { shortCadence } from "@/lib/plan-display";
+import { subscriptionPeriodPrice } from "@/lib/revenue";
+import { SalePrice } from "@/components/sale-price";
 import { EmptyState } from "@/components/empty-state";
 import { EnvelopeOpen } from "@/components/illustrations";
 
@@ -14,6 +14,7 @@ export default async function SubscribersPage() {
   });
 
   const active = subs.filter((s) => s.status === "active" || s.status === "trialing").length;
+  const now = new Date();
 
   return (
     <div className="space-y-7">
@@ -47,14 +48,8 @@ export default async function SubscribersPage() {
             </thead>
             <tbody>
               {subs.map((s, i) => {
-                const price =
-                  s.planPrice?.priceCents ??
-                  (s.interval === "year" ? s.plan.yearlyPriceCents : s.plan.monthlyPriceCents);
-                const cadence = s.planPrice
-                  ? shortCadence(s.planPrice.interval, s.planPrice.intervalCount)
-                  : s.interval === "year"
-                    ? "/yr"
-                    : "/mo";
+                // What this subscriber pays now (sale discount applied while it lasts).
+                const price = subscriptionPeriodPrice(s, now);
                 const isActive = s.status === "active" || s.status === "trialing";
                 return (
                   <tr
@@ -71,10 +66,18 @@ export default async function SubscribersPage() {
                     </Td>
                     <Td>
                       <span className="tabular" style={{ color: "var(--ink)" }}>
-                        {price != null ? formatCents(price, s.plan.currency) : "—"}
+                        {price ? (
+                          <SalePrice
+                            priceCents={price.cents}
+                            listPriceCents={price.listCents}
+                            currency={s.plan.currency}
+                          />
+                        ) : (
+                          "—"
+                        )}
                       </span>
                       <span className="ml-1.5 text-mono-sm" style={{ color: "var(--lichen)" }}>
-                        {cadence}
+                        {price?.shortCadence ?? (s.interval === "year" ? "/yr" : "/mo")}
                       </span>
                     </Td>
                     <Td>
